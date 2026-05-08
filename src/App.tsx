@@ -116,9 +116,7 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string>("16315551234");
   const activeChatIdRef = useRef<string>("16315551234");
   const [inputText, setInputText] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState({
@@ -545,7 +543,6 @@ export default function App() {
                 key={chat.id}
                 onClick={() => {
                   setActiveChatId(chat.id);
-                  setSearchQuery("");
                   if (chat.unreadCount) {
                     setConversations(prev => prev.map(c => 
                       c.id === chat.id ? { ...c, unreadCount: 0 } : c
@@ -602,15 +599,6 @@ export default function App() {
                 </div>
               </div>
               <div className="flex space-x-2">
-                <button 
-                  onClick={() => {
-                    setIsSearchOpen(!isSearchOpen);
-                    if (isSearchOpen) setSearchQuery("");
-                  }} 
-                  className={`p-2 rounded-lg transition-colors ${isSearchOpen ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
-                >
-                  <Search className="w-5 h-5" />
-                </button>
                 <button className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">
                   <Phone className="w-5 h-5" />
                 </button>
@@ -620,25 +608,6 @@ export default function App() {
               </div>
             </header>
 
-            {isSearchOpen && (
-              <div className="bg-slate-50 border-b border-slate-200 p-3 flex px-6 items-center gap-3 animate-in slide-in-from-top-2">
-                <Search className="w-4 h-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  autoFocus
-                  placeholder="Cari pesan dalam obrolan ini..." 
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm outline-none px-2"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery("")} className="text-slate-400 hover:text-slate-600">
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            )}
-
             <section className="flex-1 p-6 space-y-4 overflow-y-auto flex flex-col">
               <div className="flex justify-center mb-2">
                 <span className="px-3 py-1 bg-slate-200 text-slate-500 text-[10px] font-bold rounded-full uppercase tracking-tighter">
@@ -647,8 +616,8 @@ export default function App() {
               </div>
               
               {activeChat.messages.filter(msg => {
-                if (!isSearchOpen || !searchQuery) return true;
-                const query = searchQuery.toLowerCase();
+                if (!globalSearchQuery) return true;
+                const query = globalSearchQuery.toLowerCase();
                 const textBody = msg.text?.body?.toLowerCase() || '';
                 const imageCaption = msg.image?.caption?.toLowerCase() || '';
                 const videoCaption = msg.video?.caption?.toLowerCase() || '';
@@ -663,7 +632,7 @@ export default function App() {
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
                     }`}>
-                      {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words [word-break:break-word]">{isSearchOpen && searchQuery ? renderHighlightedText(msg.text?.body || '', searchQuery) : msg.text?.body}</p>}
+                      {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words [word-break:break-word]">{globalSearchQuery ? renderHighlightedText(msg.text?.body || '', globalSearchQuery) : msg.text?.body}</p>}
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
                           <img 
@@ -678,7 +647,7 @@ export default function App() {
                             }}
                           />
                           <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat gambar.</div>
-                          {msg.image?.caption && <p className="text-sm mt-2">{isSearchOpen && searchQuery ? renderHighlightedText(msg.image.caption, searchQuery) : msg.image.caption}</p>}
+                          {msg.image?.caption && <p className="text-sm mt-2">{globalSearchQuery ? renderHighlightedText(msg.image.caption, globalSearchQuery) : msg.image.caption}</p>}
                         </div>
                       )}
                       {msg.type === 'video' && (
@@ -693,7 +662,7 @@ export default function App() {
                             }}
                           />
                           <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat video.</div>
-                          {msg.video?.caption && <p className="text-sm mt-2">{isSearchOpen && searchQuery ? renderHighlightedText(msg.video.caption, searchQuery) : msg.video.caption}</p>}
+                          {msg.video?.caption && <p className="text-sm mt-2">{globalSearchQuery ? renderHighlightedText(msg.video.caption, globalSearchQuery) : msg.video.caption}</p>}
                         </div>
                       )}
                       {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'unsupported' && (
