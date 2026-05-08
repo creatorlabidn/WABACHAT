@@ -14,10 +14,12 @@ interface WAMessage {
   id: string;
   timestamp: string;
   type: string;
-  status?: 'sent' | 'delivered' | 'read' | 'failed' | string;
+  status?: 'sent' | 'delivered' | 'read' | 'failed' | 'pending' | string;
   text?: { body: string };
   image?: { id: string; caption?: string; mime_type?: string };
   video?: { id: string; caption?: string; mime_type?: string };
+  reaction?: { message_id: string; emoji: string };
+  reactions?: { emoji: string; fromMe: boolean }[];
 }
 
 interface Conversation {
@@ -101,6 +103,7 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string>("16315551234");
   const activeChatIdRef = useRef<string>("16315551234");
   const [inputText, setInputText] = useState("");
+  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState({
     phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
@@ -266,6 +269,36 @@ export default function App() {
               }
 
               setConversations(prev => {
+                if (newMsg.type === 'reaction' && newMsg.reaction) {
+                  const targetMessageId = newMsg.reaction.message_id;
+                  const existingChat = prev.find(c => c.id === phone);
+                  if (existingChat) {
+                    const hasTargetMessage = existingChat.messages.some(m => m.id === targetMessageId);
+                    if (hasTargetMessage) {
+                      return prev.map(chat => {
+                        if (chat.id === phone) {
+                          return {
+                            ...chat,
+                            messages: chat.messages.map(m => {
+                              if (m.id === targetMessageId) {
+                                const currentReactions = m.reactions || [];
+                                const newEmoji = newMsg.reaction?.emoji || "";
+                                const fromMe = false;
+                                const otherReactions = currentReactions.filter(r => r.fromMe !== fromMe);
+                                const newReactions = newEmoji ? [...otherReactions, { emoji: newEmoji, fromMe }] : otherReactions;
+                                return { ...m, reactions: newReactions };
+                              }
+                              return m;
+                            })
+                          };
+                        }
+                        return chat;
+                      });
+                    }
+                  }
+                  return prev;
+                }
+
                 // Avoid duplicates in state
                 const existingChat = prev.find(c => c.id === phone);
                 if (existingChat && existingChat.messages.some(m => m.id === newMsg.id)) {
@@ -387,6 +420,56 @@ export default function App() {
     } catch (err) {
       console.error(err);
       alert('Gagal mengirim pesan, periksa koneksi Anda.');
+    }
+  };
+
+  const handleReaction = async (messageId: string, emoji: string) => {
+    if (!config.phoneNumberId || !config.accessToken) {
+      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
+      return;
+    }
+    
+    // Optimistic UI update
+    setConversations(prev => {
+      return prev.map(chat => {
+        if (chat.id === activeChatId) {
+          return {
+            ...chat,
+            messages: chat.messages.map(m => {
+              if (m.id === messageId) {
+                const currentReactions = m.reactions || [];
+                const otherReactions = currentReactions.filter(r => r.fromMe !== true);
+                const newReactions = emoji ? [...otherReactions, { emoji, fromMe: true }] : otherReactions;
+                return { ...m, reactions: newReactions };
+              }
+              return m;
+            })
+          };
+        }
+        return chat;
+      });
+    });
+
+    try {
+      const res = await fetch('/api/react', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: activeChat.id,
+          message_id: messageId,
+          emoji,
+          token: config.accessToken,
+          phoneId: config.phoneNumberId
+        })
+      });
+      const data: any = await res.json();
+      if (!res.ok) {
+        console.error("Failed to react", data);
+        alert(`Gagal memberi reaksi: ${data.error?.message || JSON.stringify(data)}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Gagal memberi reaksi, periksa koneksi Anda.');
     }
   };
 
@@ -516,8 +599,8 @@ export default function App() {
                 if (msg.type === 'unsupported') return null;
                 const isMe = msg.from === "me";
                 return (
-                  <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-lg ${isMe ? 'self-end' : 'self-start'}`}>
-                    <div className={`p-3 rounded-2xl shadow-sm overflow-hidden ${
+                  <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-lg ${isMe ? 'self-end' : 'self-start'} group relative`}>
+                    <div className={`p-3 rounded-2xl shadow-sm overflow-hidden relative ${
                       isMe 
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
@@ -558,10 +641,62 @@ export default function App() {
                       {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'unsupported' && (
                         <p className="text-sm italic opacity-80">[Pesan tipe {msg.type} belum didukung]</p>
                       )}
-                      <span className={`text-[10px] block mt-1 text-right whitespace-nowrap ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
-                        {formatTimestamp(msg.timestamp)} {isMe && (msg.status === 'read' ? '• Dilihat' : msg.status === 'delivered' ? '• Terkirim' : msg.status === 'sent' ? '• Dikirim' : msg.status === 'failed' ? '• Gagal' : msg.status === 'pending' ? '• Mengirim...' : '')}
-                      </span>
+                      
+                      <div className={`flex flex-row justify-between items-end mt-1 ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
+                        {msg.reactions && msg.reactions.length > 0 ? (
+                          <div className={`flex flex-wrap gap-1 px-1 py-0.5 rounded-full ${isMe ? 'bg-indigo-700/50' : 'bg-slate-100'} mt-1`}>
+                            {msg.reactions.map((r, i) => (
+                              <span key={i} className="text-[12px]">{r.emoji}</span>
+                            ))}
+                          </div>
+                        ) : <div />}
+                        <span className="text-[10px] whitespace-nowrap ml-2">
+                          {formatTimestamp(msg.timestamp)} {isMe && (msg.status === 'read' ? '• Dilihat' : msg.status === 'delivered' ? '• Terkirim' : msg.status === 'sent' ? '• Dikirim' : msg.status === 'failed' ? '• Gagal' : msg.status === 'pending' ? '• Mengirim...' : '')}
+                        </span>
+                      </div>
                     </div>
+                    
+                    {/* Reaction button - absolute positioned beside the message */}
+                    <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? '-left-10' : '-right-10'} opacity-0 group-hover:opacity-100 transition-opacity`}>
+                      <button 
+                        className="p-1.5 bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 shadow-sm"
+                        onClick={() => setReactingToMessageId(reactingToMessageId === msg.id ? null : msg.id)}
+                      >
+                        <User className="hidden" /> {/* Placeholder import if needed, but let's use a smile icon. Wait, lucide-react doesn't have Smile imported. We can use text emoji or add Smile. Let's use text string '😀' for now */}
+                        <span className="text-sm leading-none block px-0.5">😀</span>
+                      </button>
+                    </div>
+
+                    {/* Reaction popup */}
+                    {reactingToMessageId === msg.id && (
+                      <div className={`absolute bottom-full mb-2 ${isMe ? 'right-0' : 'left-0'} z-10 bg-white border border-slate-200 shadow-xl rounded-full px-3 py-2 flex gap-2 animate-in fade-in slide-in-from-bottom-2`}>
+                        {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+                          <button 
+                            key={emoji}
+                            className="text-xl hover:scale-125 transition-transform origin-bottom"
+                            onClick={() => {
+                              handleReaction(msg.id, emoji);
+                              setReactingToMessageId(null);
+                            }}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                        {/* Remove reaction option if already reacted by me */}
+                        {msg.reactions?.some(r => r.fromMe) && (
+                          <button 
+                            className="text-lg text-slate-400 hover:text-red-500 ml-1 border-l pl-2 border-slate-200"
+                            title="Hapus reaksi"
+                            onClick={() => {
+                              handleReaction(msg.id, "");
+                              setReactingToMessageId(null);
+                            }}
+                          >
+                            <X className="w-5 h-5 inline-block" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
