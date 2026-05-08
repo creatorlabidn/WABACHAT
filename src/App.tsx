@@ -15,6 +15,7 @@ interface WAMessage {
   timestamp: string;
   type: string;
   text?: { body: string };
+  image?: { id: string; caption?: string; mime_type?: string };
 }
 
 interface Conversation {
@@ -334,7 +335,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between items-center mt-1">
                   <p className={`text-sm truncate flex-1 pr-2 ${chat.unreadCount ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
-                    {lastMsg?.type === 'text' ? lastMsg.text?.body : `[${lastMsg?.type}]`}
+                    {lastMsg?.type === 'text' ? lastMsg.text?.body : lastMsg?.type === 'image' ? (lastMsg.image?.caption || '[Gambar]') : `[${lastMsg?.type}]`}
                   </p>
                   {!!chat.unreadCount && chat.unreadCount > 0 && (
                     <span className="shrink-0 flex items-center justify-center w-5 h-5 bg-indigo-600 text-white rounded-full text-[10px] font-bold">
@@ -395,9 +396,26 @@ export default function App() {
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
                     }`}>
-                      <p className="text-sm">
-                        {msg.type === 'text' ? msg.text?.body : `[Unsupported message type: ${msg.type}]`}
-                      </p>
+                      {msg.type === 'text' && <p className="text-sm">{msg.text?.body}</p>}
+                      {msg.type === 'image' && (
+                        <div className="flex flex-col">
+                          <img 
+                            src={`/api/media?id=${msg.image?.id}&token=${config.accessToken}`} 
+                            alt={msg.image?.caption || "Gambar"} 
+                            className="max-w-[240px] sm:max-w-xs rounded-xl max-h-64 object-cover" 
+                            loading="lazy" 
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                          <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat gambar.</div>
+                          {msg.image?.caption && <p className="text-sm mt-2">{msg.image.caption}</p>}
+                        </div>
+                      )}
+                      {msg.type !== 'text' && msg.type !== 'image' && (
+                        <p className="text-sm italic opacity-80">[Pesan tipe {msg.type} belum didukung]</p>
+                      )}
                       <span className={`text-[10px] block mt-1 text-right ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
                         {formatTimestamp(msg.timestamp)} {isMe && '• Dilihat'}
                       </span>
