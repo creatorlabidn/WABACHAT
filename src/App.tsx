@@ -97,6 +97,7 @@ export default function App() {
     phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
     accessToken: localStorage.getItem('wa_access_token') || '',
   });
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeChat = conversations.find(c => c.id === activeChatId) || conversations[0];
@@ -402,8 +403,9 @@ export default function App() {
                           <img 
                             src={`/api/media?id=${msg.image?.id}&token=${config.accessToken}`} 
                             alt={msg.image?.caption || "Gambar"} 
-                            className="max-w-[240px] sm:max-w-xs rounded-xl max-h-64 object-cover" 
+                            className="max-w-[240px] sm:max-w-xs rounded-xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity" 
                             loading="lazy" 
+                            onClick={() => setFullscreenImage(`/api/media?id=${msg.image?.id}&token=${config.accessToken}`)}
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';
                               (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
@@ -603,6 +605,29 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Fullscreen Image Modal */}
+      {fullscreenImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] p-4 cursor-zoom-out"
+          onClick={() => setFullscreenImage(null)}
+        >
+          <img 
+            src={fullscreenImage} 
+            alt="Fullscreen" 
+            className="max-w-full max-h-screen object-contain"
+          />
+          <button 
+            className="absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full hover:bg-black/70 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFullscreenImage(null);
+            }}
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
       )}
     </div>
