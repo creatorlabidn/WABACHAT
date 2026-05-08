@@ -406,7 +406,7 @@ export default function App() {
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
                     }`}>
-                      {msg.type === 'text' && <p className="text-sm">{msg.text?.body}</p>}
+                      {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words max-w-full">{msg.text?.body}</p>}
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
                           <img 
@@ -453,22 +453,27 @@ export default function App() {
             </section>
 
             <footer className="p-4 bg-white border-t border-slate-200">
-              <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
-                <button className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors">
+              <div className="flex items-end space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 relative">
+                <button className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5">
                   <Paperclip className="w-5 h-5" />
                 </button>
-                <input 
-                  type="text" 
+                <textarea 
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
                   placeholder="Ketik balasan Anda..." 
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-2 px-2 focus:outline-none" 
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-2.5 px-2 focus:outline-none resize-none" 
+                  rows={Math.min(Math.max(inputText.split('\n').length, 1), 5)}
                 />
                 <button 
                   onClick={handleSendMessage}
                   disabled={!inputText.trim()}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex flex-row items-center gap-2"
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex flex-row items-center gap-2 mb-0.5"
                 >
                   <Send className="w-4 h-4" />
                   Kirim
