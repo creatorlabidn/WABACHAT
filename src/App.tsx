@@ -14,6 +14,7 @@ interface WAMessage {
   id: string;
   timestamp: string;
   type: string;
+  status?: 'sent' | 'delivered' | 'read' | 'failed' | string;
   text?: { body: string };
   image?: { id: string; caption?: string; mime_type?: string };
   video?: { id: string; caption?: string; mime_type?: string };
@@ -56,6 +57,7 @@ export default function App() {
             id: "msg2",
             timestamp: (Date.now() / 1000 - 120).toString(),
             type: "text",
+            status: "read",
             text: { body: "Halo Pak Budi, pesanan #8829 sedang diproses oleh tim gudang kami dan akan dikirim sore ini." }
           },
           {
@@ -120,7 +122,44 @@ export default function App() {
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
+    
+    // Clear unread count when switching chats
+    setConversations(prev => prev.map(c => c.id === activeChatId ? { ...c, unreadCount: 0 } : c));
   }, [activeChatId]);
+
+  // Mark all unread incoming messages as read
+  useEffect(() => {
+    if (!activeChat) return;
+    
+    const unreadMessages = activeChat.messages.filter(m => m.from !== 'me' && m.status !== 'read_by_me');
+    if (unreadMessages.length > 0 && config.phoneNumberId && config.accessToken) {
+      unreadMessages.forEach(async (msg) => {
+        try {
+          await fetch('/api/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messageId: msg.id,
+              phoneId: config.phoneNumberId,
+              token: config.accessToken
+            })
+          });
+          
+          setConversations(prev => prev.map(chat => {
+            if (chat.id === activeChat.id) {
+              return {
+                ...chat,
+                messages: chat.messages.map(m => m.id === msg.id ? { ...m, status: 'read_by_me' } : m)
+              };
+            }
+            return chat;
+          }));
+        } catch (e) {
+          console.error("Failed to mark as read", e);
+        }
+      });
+    }
+  }, [activeChat, config.phoneNumberId, config.accessToken]);
 
   const isInitialFetchRef = useRef(true);
 
@@ -148,55 +187,83 @@ export default function App() {
           if (
             payload.entry &&
             payload.entry[0].changes &&
-            payload.entry[0].changes[0] &&
-            payload.entry[0].changes[0].value.messages
+            payload.entry[0].changes[0]
           ) {
             const value = payload.entry[0].changes[0].value;
-            const contacts = value.contacts as WAContact[];
-            const messages = value.messages as WAMessage[];
             
-            if (!messages || messages.length === 0) return;
-            
-            const newMsg = messages[0];
-            
-            // Skip if already processed
-            if (processedMsgIds.has(newMsg.id)) return;
-            processedMsgIds.add(newMsg.id);
+            // Handle message status updates
+            if (value.statuses) {
+              const statusUpdates = value.statuses;
+              statusUpdates.forEach((statusUpdate: any) => {
+                if (processedMsgIds.has(`${statusUpdate.id}_${statusUpdate.status}`)) return;
+                processedMsgIds.add(`${statusUpdate.id}_${statusUpdate.status}`);
+                
+                setConversations(prev => {
+                  return prev.map(chat => {
+                    const hasMessage = chat.messages.some(m => m.id === statusUpdate.id);
+                    if (hasMessage) {
+                      return {
+                        ...chat,
+                        messages: chat.messages.map(m => 
+                          // Only update if the status is coming in sequence, but for simplicity just update it
+                          m.id === statusUpdate.id ? { ...m, status: statusUpdate.status } : m
+                        )
+                      };
+                    }
+                    return chat;
+                  });
+                });
+              });
+            }
 
-            const contact = contacts ? contacts[0] : null;
-            const phone = newMsg.from;
-            const defaultName = contact ? contact.profile.name : `+${phone}`;
+            // Handle new messages
+            if (value.messages) {
+              const contacts = value.contacts as WAContact[];
+              const messages = value.messages as WAMessage[];
+              
+              if (!messages || messages.length === 0) return;
+              
+              const newMsg = messages[0];
+              
+              // Skip if already processed
+              if (processedMsgIds.has(newMsg.id)) return;
+              processedMsgIds.add(newMsg.id);
 
-            setConversations(prev => {
-              // Avoid duplicates in state
-              const existingChat = prev.find(c => c.id === phone);
-              if (existingChat && existingChat.messages.some(m => m.id === newMsg.id)) {
-                return prev;
-              }
+              const contact = contacts ? contacts[0] : null;
+              const phone = newMsg.from;
+              const defaultName = contact ? contact.profile.name : `+${phone}`;
 
-              const isCurrentlyActive = phone === activeChatIdRef.current;
-              const isInitial = isInitialFetchRef.current;
+              setConversations(prev => {
+                // Avoid duplicates in state
+                const existingChat = prev.find(c => c.id === phone);
+                if (existingChat && existingChat.messages.some(m => m.id === newMsg.id)) {
+                  return prev;
+                }
 
-              if (existingChat) {
-                const updatedChat = {
-                  ...existingChat,
-                  messages: [...existingChat.messages, newMsg],
-                  lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  unreadCount: isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
-                };
-                return [updatedChat, ...prev.filter(c => c.id !== phone)];
-              } else {
-                const newChat: Conversation = {
-                  id: phone,
-                  name: defaultName,
-                  phone: `+${phone}`,
-                  messages: [newMsg],
-                  lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  unreadCount: isCurrentlyActive || isInitial ? 0 : 1
-                };
-                return [newChat, ...prev];
-              }
-            });
+                const isCurrentlyActive = phone === activeChatIdRef.current;
+                const isInitial = isInitialFetchRef.current;
+
+                if (existingChat) {
+                  const updatedChat = {
+                    ...existingChat,
+                    messages: [...existingChat.messages, newMsg],
+                    lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    unreadCount: isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
+                  };
+                  return [updatedChat, ...prev.filter(c => c.id !== phone)];
+                } else {
+                  const newChat: Conversation = {
+                    id: phone,
+                    name: defaultName,
+                    phone: `+${phone}`,
+                    messages: [newMsg],
+                    lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    unreadCount: isCurrentlyActive || isInitial ? 0 : 1
+                  };
+                  return [newChat, ...prev];
+                }
+              });
+            }
           }
         });
         isInitialFetchRef.current = false;
@@ -233,6 +300,7 @@ export default function App() {
       id: `local_${Date.now()}`,
       timestamp: Math.floor(Date.now() / 1000).toString(),
       type: "text",
+      status: "pending",
       text: { body: inputText }
     };
 
@@ -267,6 +335,22 @@ export default function App() {
       if (!res.ok) {
         console.error("Failed to send", data);
         alert(`Gagal mengirim pesan: ${data.error?.message || JSON.stringify(data)}`);
+      } else {
+        if (data.messages && data.messages.length > 0) {
+          const realId = data.messages[0].id;
+          
+          setConversations(prev => {
+            return prev.map(chat => {
+              if (chat.id === activeChatId) {
+                return {
+                  ...chat,
+                  messages: chat.messages.map(m => m.id === newMsg.id ? { ...m, id: realId, status: 'sent' } : m)
+                };
+              }
+              return chat;
+            });
+          });
+        }
       }
     } catch (err) {
       console.error(err);
@@ -442,8 +526,8 @@ export default function App() {
                       {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'unsupported' && (
                         <p className="text-sm italic opacity-80">[Pesan tipe {msg.type} belum didukung]</p>
                       )}
-                      <span className={`text-[10px] block mt-1 text-right ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
-                        {formatTimestamp(msg.timestamp)} {isMe && '• Dilihat'}
+                      <span className={`text-[10px] block mt-1 text-right whitespace-nowrap ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
+                        {formatTimestamp(msg.timestamp)} {isMe && (msg.status === 'read' ? '• Dilihat' : msg.status === 'delivered' ? '• Terkirim' : msg.status === 'sent' ? '• Dikirim' : msg.status === 'failed' ? '• Gagal' : msg.status === 'pending' ? '• Mengirim...' : '')}
                       </span>
                     </div>
                   </div>
