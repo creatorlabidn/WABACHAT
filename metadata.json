@@ -1,0 +1,6 @@
+{
+  "name": "WhatsApp API Dashboard",
+  "description": "Dashboard for reading and managing messages from WhatsApp Business API Webhooks",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
