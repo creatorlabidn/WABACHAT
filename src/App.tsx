@@ -96,8 +96,17 @@ export default function App() {
     phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
     accessToken: localStorage.getItem('wa_access_token') || '',
   });
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeChat = conversations.find(c => c.id === activeChatId) || conversations[0];
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [activeChat?.messages.length, activeChatId]);
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -396,6 +405,7 @@ export default function App() {
                   </div>
                 );
               })}
+              <div ref={messagesEndRef} />
             </section>
 
             <footer className="p-4 bg-white border-t border-slate-200">
