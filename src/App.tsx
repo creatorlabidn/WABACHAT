@@ -128,6 +128,9 @@ export default function App() {
   }, [activeChatId]);
 
   // Mark all unread incoming messages as read
+  const conversationsRef = useRef(conversations);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+  
   useEffect(() => {
     if (!activeChat) return;
     
@@ -195,6 +198,9 @@ export default function App() {
             if (value.statuses) {
               const statusUpdates = value.statuses;
               statusUpdates.forEach((statusUpdate: any) => {
+                const foundChat = conversationsRef.current.find(c => c.messages.some(m => m.id === statusUpdate.id));
+                if (!foundChat) return; // Wait until local message gets real ID
+
                 if (processedMsgIds.has(`${statusUpdate.id}_${statusUpdate.status}`)) return;
                 processedMsgIds.add(`${statusUpdate.id}_${statusUpdate.status}`);
                 
@@ -204,10 +210,17 @@ export default function App() {
                     if (hasMessage) {
                       return {
                         ...chat,
-                        messages: chat.messages.map(m => 
-                          // Only update if the status is coming in sequence, but for simplicity just update it
-                          m.id === statusUpdate.id ? { ...m, status: statusUpdate.status } : m
-                        )
+                        messages: chat.messages.map(m => {
+                          if (m.id === statusUpdate.id) {
+                            const weights: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, failed: -1 };
+                            const currentW = weights[m.status || 'pending'] ?? 0;
+                            const newW = weights[statusUpdate.status] ?? 0;
+                            if (newW > currentW) {
+                              return { ...m, status: statusUpdate.status };
+                            }
+                          }
+                          return m;
+                        })
                       };
                     }
                     return chat;
