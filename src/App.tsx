@@ -95,6 +95,11 @@ export default function App() {
         const webhooks: any[] = await res.json();
         
         webhooks.forEach((payload: any) => {
+          if (payload.error) {
+            console.error(payload.message);
+            // Optionally we could show a toast here, but console is good enough for now
+            return;
+          }
           if (
             payload.entry &&
             payload.entry[0].changes &&
