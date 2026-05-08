@@ -1,7 +1,0 @@
-name = "wa-dashboard"
-pages_build_output_dir = "dist"
-compatibility_date = "2024-03-20"
-
-# Note: To use KV in production, bind your KV Namespace in the Cloudflare Dashboard:
-# Go to your Pages Project -> Settings -> Functions -> KV namespace bindings
-# Variable name: WA_WEBHOOKS
