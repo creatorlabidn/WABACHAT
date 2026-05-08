@@ -11,7 +11,7 @@ const renderHighlightedText = (text: string, highlight: string) => {
   return (
     <span>
       {parts.map((part, i) => 
-        regex.test(part) ? <mark key={i} className="bg-yellow-200 rounded px-0.5 text-slate-900">{part}</mark> : part
+        part.toLowerCase() === highlight.toLowerCase() ? <mark key={i} className="bg-yellow-200 rounded px-0.5 text-slate-900">{part}</mark> : <span key={i}>{part}</span>
       )}
     </span>
   );
@@ -638,7 +638,14 @@ export default function App() {
                 </span>
               </div>
               
-              {activeChat.messages.map((msg) => {
+              {activeChat.messages.filter(msg => {
+                if (!isSearchOpen || !searchQuery) return true;
+                const query = searchQuery.toLowerCase();
+                const textBody = msg.text?.body?.toLowerCase() || '';
+                const imageCaption = msg.image?.caption?.toLowerCase() || '';
+                const videoCaption = msg.video?.caption?.toLowerCase() || '';
+                return textBody.includes(query) || imageCaption.includes(query) || videoCaption.includes(query);
+              }).map((msg) => {
                 if (msg.type === 'unsupported') return null;
                 const isMe = msg.from === "me";
                 return (
