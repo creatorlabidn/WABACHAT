@@ -89,13 +89,20 @@ export default function App() {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
 
+  const isInitialFetchRef = useRef(true);
+
   useEffect(() => {
     // Track processed message IDs to avoid duplicates during polling
     const processedMsgIds = new Set<string>();
 
     const fetchWebhooks = async () => {
       try {
-        const res = await fetch('/api/webhooks');
+        const res = await fetch(`/api/webhooks?t=${Date.now()}`, {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
         if (!res.ok) return;
         const webhooks: any[] = await res.json();
         
@@ -135,13 +142,14 @@ export default function App() {
               }
 
               const isCurrentlyActive = phone === activeChatIdRef.current;
+              const isInitial = isInitialFetchRef.current;
 
               if (existingChat) {
                 const updatedChat = {
                   ...existingChat,
                   messages: [...existingChat.messages, newMsg],
                   lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  unreadCount: isCurrentlyActive ? 0 : (existingChat.unreadCount || 0) + 1
+                  unreadCount: isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
                 };
                 return [updatedChat, ...prev.filter(c => c.id !== phone)];
               } else {
@@ -151,13 +159,14 @@ export default function App() {
                   phone: `+${phone}`,
                   messages: [newMsg],
                   lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  unreadCount: isCurrentlyActive ? 0 : 1
+                  unreadCount: isCurrentlyActive || isInitial ? 0 : 1
                 };
                 return [newChat, ...prev];
               }
             });
           }
         });
+        isInitialFetchRef.current = false;
       } catch (err) {
         console.error('Error fetching webhooks:', err);
       }
