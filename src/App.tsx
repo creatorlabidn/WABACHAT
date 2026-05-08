@@ -91,6 +91,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('wa_conversations', JSON.stringify(conversations));
   }, [conversations]);
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+  }, []);
   
   const [activeChatId, setActiveChatId] = useState<string>("16315551234");
   const activeChatIdRef = useRef<string>("16315551234");
@@ -245,6 +251,19 @@ export default function App() {
               const contact = contacts ? contacts[0] : null;
               const phone = newMsg.from;
               const defaultName = contact ? contact.profile.name : `+${phone}`;
+
+              if (!isInitialFetchRef.current && Notification.permission === "granted") {
+                const isCurrentlyActive = phone === activeChatIdRef.current;
+                if (!isCurrentlyActive || document.hidden) {
+                  const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : `[${newMsg.type}]`;
+                  const notification = new Notification(`Pesan baru dari ${defaultName}`, {
+                    body: body,
+                  });
+                  notification.onclick = () => {
+                    window.focus();
+                  };
+                }
+              }
 
               setConversations(prev => {
                 // Avoid duplicates in state
