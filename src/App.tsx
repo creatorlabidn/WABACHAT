@@ -16,6 +16,7 @@ interface WAMessage {
   type: string;
   text?: { body: string };
   image?: { id: string; caption?: string; mime_type?: string };
+  video?: { id: string; caption?: string; mime_type?: string };
 }
 
 interface Conversation {
@@ -336,7 +337,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between items-center mt-1">
                   <p className={`text-sm truncate flex-1 pr-2 ${chat.unreadCount ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
-                    {lastMsg?.type === 'text' ? lastMsg.text?.body : lastMsg?.type === 'image' ? (lastMsg.image?.caption || '[Gambar]') : `[${lastMsg?.type}]`}
+                    {lastMsg?.type === 'text' ? lastMsg.text?.body : lastMsg?.type === 'image' ? (lastMsg.image?.caption || '[Gambar]') : lastMsg?.type === 'video' ? (lastMsg.video?.caption || '[Video]') : lastMsg?.type === 'unsupported' ? '' : `[${lastMsg?.type}]`}
                   </p>
                   {!!chat.unreadCount && chat.unreadCount > 0 && (
                     <span className="shrink-0 flex items-center justify-center w-5 h-5 bg-indigo-600 text-white rounded-full text-[10px] font-bold">
@@ -389,6 +390,7 @@ export default function App() {
               </div>
               
               {activeChat.messages.map((msg) => {
+                if (msg.type === 'unsupported') return null;
                 const isMe = msg.from === "me";
                 return (
                   <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-lg ${isMe ? 'self-end' : 'self-start'}`}>
@@ -415,7 +417,22 @@ export default function App() {
                           {msg.image?.caption && <p className="text-sm mt-2">{msg.image.caption}</p>}
                         </div>
                       )}
-                      {msg.type !== 'text' && msg.type !== 'image' && (
+                      {msg.type === 'video' && (
+                        <div className="flex flex-col">
+                          <video 
+                            src={`/api/media?id=${msg.video?.id}&token=${config.accessToken}`} 
+                            controls
+                            className="max-w-[240px] sm:max-w-xs rounded-xl max-h-64 bg-black object-contain" 
+                            onError={(e) => {
+                              (e.target as HTMLVideoElement).style.display = 'none';
+                              (e.target as HTMLVideoElement).nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                          <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat video.</div>
+                          {msg.video?.caption && <p className="text-sm mt-2">{msg.video.caption}</p>}
+                        </div>
+                      )}
+                      {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'unsupported' && (
                         <p className="text-sm italic opacity-80">[Pesan tipe {msg.type} belum didukung]</p>
                       )}
                       <span className={`text-[10px] block mt-1 text-right ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
