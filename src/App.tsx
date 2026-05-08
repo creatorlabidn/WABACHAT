@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
   Search, Send, CheckCircle2, CircleDashed, X
@@ -75,6 +75,7 @@ export default function App() {
   ]);
   
   const [activeChatId, setActiveChatId] = useState<string>("16315551234");
+  const activeChatIdRef = useRef<string>("16315551234");
   const [inputText, setInputText] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState({
@@ -83,6 +84,10 @@ export default function App() {
   });
 
   const activeChat = conversations.find(c => c.id === activeChatId) || conversations[0];
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   useEffect(() => {
     // Track processed message IDs to avoid duplicates during polling
@@ -129,11 +134,14 @@ export default function App() {
                 return prev;
               }
 
+              const isCurrentlyActive = phone === activeChatIdRef.current;
+
               if (existingChat) {
                 const updatedChat = {
                   ...existingChat,
                   messages: [...existingChat.messages, newMsg],
-                  lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  unreadCount: isCurrentlyActive ? 0 : (existingChat.unreadCount || 0) + 1
                 };
                 return [updatedChat, ...prev.filter(c => c.id !== phone)];
               } else {
@@ -142,7 +150,8 @@ export default function App() {
                   name: defaultName,
                   phone: `+${phone}`,
                   messages: [newMsg],
-                  lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  unreadCount: isCurrentlyActive ? 0 : 1
                 };
                 return [newChat, ...prev];
               }
@@ -271,7 +280,14 @@ export default function App() {
             return (
               <div 
                 key={chat.id}
-                onClick={() => setActiveChatId(chat.id)}
+                onClick={() => {
+                  setActiveChatId(chat.id);
+                  if (chat.unreadCount) {
+                    setConversations(prev => prev.map(c => 
+                      c.id === chat.id ? { ...c, unreadCount: 0 } : c
+                    ));
+                  }
+                }}
                 className={`p-4 border-l-4 cursor-pointer transition-colors ${
                   isActive 
                     ? 'bg-indigo-50 border-indigo-600' 
@@ -279,14 +295,21 @@ export default function App() {
                 }`}
               >
                 <div className="flex justify-between items-start">
-                  <span className="font-semibold text-slate-900 truncate pr-2">{chat.name}</span>
-                  <span className={`text-xs whitespace-nowrap ${isActive ? 'text-indigo-600 font-medium' : 'text-slate-400'}`}>
+                  <span className={`font-semibold truncate pr-2 ${chat.unreadCount ? 'text-slate-900 font-bold' : 'text-slate-900'}`}>{chat.name}</span>
+                  <span className={`text-xs whitespace-nowrap ${isActive ? 'text-indigo-600 font-medium' : chat.unreadCount ? 'text-indigo-600 font-bold' : 'text-slate-400'}`}>
                     {chat.lastMessageTime}
                   </span>
                 </div>
-                <p className="text-sm text-slate-600 mt-1 truncate">
-                  {lastMsg?.type === 'text' ? lastMsg.text?.body : `[${lastMsg?.type}]`}
-                </p>
+                <div className="flex justify-between items-center mt-1">
+                  <p className={`text-sm truncate flex-1 pr-2 ${chat.unreadCount ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
+                    {lastMsg?.type === 'text' ? lastMsg.text?.body : `[${lastMsg?.type}]`}
+                  </p>
+                  {!!chat.unreadCount && chat.unreadCount > 0 && (
+                    <span className="shrink-0 flex items-center justify-center w-5 h-5 bg-indigo-600 text-white rounded-full text-[10px] font-bold">
+                      {chat.unreadCount}
+                    </span>
+                  )}
+                </div>
                 {isActive && chat.id === "16315551234" && (
                   <div className="mt-2 flex space-x-2">
                     <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded uppercase">New Order</span>
