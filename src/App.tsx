@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
-  Search, Send, CheckCircle2, CircleDashed 
+  Search, Send, CheckCircle2, CircleDashed, X
 } from 'lucide-react';
 
 interface WAContact {
@@ -76,6 +76,11 @@ export default function App() {
   
   const [activeChatId, setActiveChatId] = useState<string>("16315551234");
   const [inputText, setInputText] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [config, setConfig] = useState({
+    phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
+    accessToken: localStorage.getItem('wa_access_token') || '',
+  });
 
   const activeChat = conversations.find(c => c.id === activeChatId) || conversations[0];
 
@@ -157,8 +162,14 @@ export default function App() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputText.trim()) return;
+
+    if (!config.phoneNumberId || !config.accessToken) {
+      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
+      setIsSettingsOpen(true);
+      return;
+    }
     
     // Optimistic UI update
     const newMsg: WAMessage = {
@@ -182,9 +193,29 @@ export default function App() {
       });
     });
 
+    const messageToSend = inputText;
     setInputText("");
     
-    // In a real app, you would make a POST to your API to send the message via WhatsApp API here
+    try {
+      const res = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: activeChat.id,
+          message: messageToSend,
+          token: config.accessToken,
+          phoneId: config.phoneNumberId
+        })
+      });
+      const data: any = await res.json();
+      if (!res.ok) {
+        console.error("Failed to send", data);
+        alert(`Gagal mengirim pesan: ${data.error?.message || JSON.stringify(data)}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Gagal mengirim pesan, periksa koneksi Anda.');
+    }
   };
 
   return (
@@ -201,7 +232,7 @@ export default function App() {
           <div className="p-2 hover:text-white cursor-pointer transition-colors">
             <User className="w-6 h-6" />
           </div>
-          <div className="p-2 hover:text-white cursor-pointer transition-colors">
+          <div onClick={() => setIsSettingsOpen(true)} className="p-2 hover:text-white cursor-pointer transition-colors">
             <Settings className="w-6 h-6" />
           </div>
         </div>
@@ -394,6 +425,106 @@ export default function App() {
             </div>
           </div>
         </aside>
+      )}
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-800">Pengaturan WhatsApp API</h2>
+              <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+              
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <h3 className="text-sm font-bold text-slate-800 mb-2">Konfigurasi Webhook</h3>
+                <p className="text-xs text-slate-500 mb-4">Gunakan konfigurasi ini di Meta App Dashboard (WhatsApp &gt; Configuration).</p>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Callback URL</label>
+                    <div className="flex">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value={`${window.location.origin}/api/webhook`} 
+                        className="w-full bg-white border border-slate-300 rounded-l-lg py-1.5 px-3 text-sm focus:outline-none"
+                      />
+                      <button 
+                        onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/webhook`)}
+                        className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-r-lg text-xs font-bold hover:bg-slate-300 border border-l-0 border-slate-300"
+                      >Copy</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Verify Token</label>
+                    <div className="flex">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value="my-verify-token" 
+                        className="w-full bg-white border border-slate-300 rounded-l-lg py-1.5 px-3 text-sm focus:outline-none"
+                      />
+                      <button 
+                        onClick={() => navigator.clipboard.writeText("my-verify-token")}
+                        className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-r-lg text-xs font-bold hover:bg-slate-300 border border-l-0 border-slate-300"
+                      >Copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 mb-2">Kredensial API</h3>
+                <p className="text-xs text-slate-500 mb-4">Diperlukan untuk membalas/mengirim pesan.</p>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Phone Number ID</label>
+                    <input 
+                      type="text" 
+                      value={config.phoneNumberId}
+                      onChange={e => setConfig({...config, phoneNumberId: e.target.value})}
+                      placeholder="Misal: 1059345267..." 
+                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Access Token / Permanent Token</label>
+                    <input 
+                      type="password" 
+                      value={config.accessToken}
+                      onChange={e => setConfig({...config, accessToken: e.target.value})}
+                      placeholder="EAAL..." 
+                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end space-x-2">
+              <button 
+                onClick={() => setIsSettingsOpen(false)}
+                className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-800"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={() => {
+                  localStorage.setItem('wa_phone_number_id', config.phoneNumberId);
+                  localStorage.setItem('wa_access_token', config.accessToken);
+                  setIsSettingsOpen(false);
+                }}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700"
+              >
+                Simpan
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
