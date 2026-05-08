@@ -103,12 +103,19 @@ export default function App() {
 
   const activeChat = conversations.find(c => c.id === activeChatId) || conversations[0];
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (instant = false) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? "auto" : "smooth" });
   };
 
+  const prevChatIdRef = useRef(activeChatId);
+
   useEffect(() => {
-    scrollToBottom();
+    if (prevChatIdRef.current !== activeChatId) {
+      scrollToBottom(true);
+      prevChatIdRef.current = activeChatId;
+    } else {
+      scrollToBottom(false);
+    }
   }, [activeChat?.messages.length, activeChatId]);
 
   useEffect(() => {
