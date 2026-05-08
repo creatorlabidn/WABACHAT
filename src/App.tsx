@@ -400,13 +400,13 @@ export default function App() {
                 if (msg.type === 'unsupported') return null;
                 const isMe = msg.from === "me";
                 return (
-                  <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-lg ${isMe ? 'self-end' : 'self-start'}`}>
-                    <div className={`p-3 rounded-2xl shadow-sm ${
+                  <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-lg ${isMe ? 'self-end' : 'self-start'}`}>
+                    <div className={`p-3 rounded-2xl shadow-sm overflow-hidden ${
                       isMe 
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
                     }`}>
-                      {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words max-w-full">{msg.text?.body}</p>}
+                      {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words [word-break:break-word]">{msg.text?.body}</p>}
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
                           <img 
