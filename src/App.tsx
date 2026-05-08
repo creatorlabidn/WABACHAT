@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
-  Search, Send, CheckCircle2, CircleDashed, X
+  Search, Send, CheckCircle2, CircleDashed, X, Trash2
 } from 'lucide-react';
 
 interface WAContact {
@@ -20,6 +20,7 @@ interface WAMessage {
   video?: { id: string; caption?: string; mime_type?: string };
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
+  isRecalled?: boolean;
 }
 
 interface Conversation {
@@ -423,6 +424,31 @@ export default function App() {
     }
   };
 
+  const handleRecallMessage = async (messageId: string) => {
+    // Delete from local state first
+    setConversations(prev => {
+      return prev.map(chat => {
+        if (chat.id === activeChatId) {
+          return {
+            ...chat,
+            messages: chat.messages.map(m => m.id === messageId ? { ...m, isRecalled: true, type: 'text', image: undefined, video: undefined, text: { body: "🚫 Anda menarik pesan ini" } } : m)
+          };
+        }
+        return chat;
+      });
+    });
+
+    // Alert the user about API limitation
+    // WhatsApp Cloud API currently does NOT support revoking messages sent by business,
+    // so we only do a local delete. We could simulate an API call here if they add it in the future.
+    try {
+      // Future API call: 
+      // await fetch('/api/recall', { method: 'POST', body: JSON.stringify({ message_id: messageId }) })
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!config.phoneNumberId || !config.accessToken) {
       alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
@@ -605,7 +631,7 @@ export default function App() {
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
                     }`}>
-                      {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words [word-break:break-word]">{msg.text?.body}</p>}
+                      {msg.type === 'text' && <p className={`text-sm whitespace-pre-wrap break-words [word-break:break-word] ${msg.isRecalled ? 'italic opacity-70' : ''}`}>{msg.text?.body}</p>}
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
                           <img 
@@ -656,13 +682,21 @@ export default function App() {
                       </div>
                     </div>
                     
-                    {/* Reaction button - absolute positioned beside the message */}
-                    <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? '-left-10' : '-right-10'} opacity-0 group-hover:opacity-100 transition-opacity`}>
+                    {/* Action buttons - absolute positioned beside the message */}
+                    <div className={`absolute top-1/2 -translate-y-1/2 flex gap-1 ${isMe ? '-left-20' : '-right-10'} opacity-0 group-hover:opacity-100 transition-opacity`}>
+                      {isMe && (
+                        <button 
+                          className="p-1.5 bg-white border border-slate-200 rounded-full text-slate-400 hover:text-red-600 shadow-sm"
+                          title="Tarik Pesan"
+                          onClick={() => handleRecallMessage(msg.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                       <button 
                         className="p-1.5 bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 shadow-sm"
                         onClick={() => setReactingToMessageId(reactingToMessageId === msg.id ? null : msg.id)}
                       >
-                        <User className="hidden" /> {/* Placeholder import if needed, but let's use a smile icon. Wait, lucide-react doesn't have Smile imported. We can use text emoji or add Smile. Let's use text string '😀' for now */}
                         <span className="text-sm leading-none block px-0.5">😀</span>
                       </button>
                     </div>
