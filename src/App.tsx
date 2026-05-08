@@ -117,6 +117,7 @@ export default function App() {
   const activeChatIdRef = useRef<string>("16315551234");
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -524,13 +525,19 @@ export default function App() {
             </div>
             <input 
               type="text" 
-              placeholder="Cari pesan..." 
+              placeholder="Cari obrolan atau pesan..." 
+              value={globalSearchQuery}
+              onChange={(e) => setGlobalSearchQuery(e.target.value)}
               className="w-full bg-slate-100 border-none rounded-lg py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
             />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {conversations.map(chat => {
+          {conversations.filter(chat => {
+            if (!globalSearchQuery) return true;
+            const q = globalSearchQuery.toLowerCase();
+            return chat.name.toLowerCase().includes(q) || chat.messages.some(m => m.text?.body?.toLowerCase().includes(q) || m.image?.caption?.toLowerCase().includes(q) || m.video?.caption?.toLowerCase().includes(q));
+          }).map(chat => {
             const lastMsg = chat.messages[chat.messages.length - 1];
             const isActive = chat.id === activeChatId;
             return (
@@ -538,6 +545,7 @@ export default function App() {
                 key={chat.id}
                 onClick={() => {
                   setActiveChatId(chat.id);
+                  setSearchQuery("");
                   if (chat.unreadCount) {
                     setConversations(prev => prev.map(c => 
                       c.id === chat.id ? { ...c, unreadCount: 0 } : c
