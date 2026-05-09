@@ -128,6 +128,19 @@ export default function App() {
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const labelMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (labelMenuRef.current && !labelMenuRef.current.contains(event.target as Node)) {
+        setShowLabelMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const AVAILABLE_LABELS = ['Prospek', 'Selesai', 'Komplain'];
 
@@ -642,7 +655,7 @@ export default function App() {
                   </p>
                 </div>
               </div>
-              <div className="flex space-x-2 relative">
+              <div ref={labelMenuRef} className="flex space-x-2 relative">
                 <button 
                   onClick={() => setShowLabelMenu(!showLabelMenu)}
                   className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
