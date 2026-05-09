@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
-  Search, Send, CheckCircle2, CircleDashed, X
+  Search, Send, CheckCircle2, CircleDashed, X, Tag
 } from 'lucide-react';
 
 const renderHighlightedText = (text: string, highlight: string) => {
@@ -17,35 +17,6 @@ const renderHighlightedText = (text: string, highlight: string) => {
   );
 };
 
-const resizeImage = (file: File, maxSize: number = 800): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
-        if (width > height && width > maxSize) {
-          height *= maxSize / width;
-          width = maxSize;
-        } else if (height > maxSize) {
-          width *= maxSize / height;
-          height = maxSize;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
-      };
-      img.onerror = reject;
-    };
-    reader.onerror = reject;
-  });
-};
-
 interface WAContact {
   profile: { name: string };
   wa_id: string;
@@ -58,7 +29,7 @@ interface WAMessage {
   type: string;
   status?: 'sent' | 'delivered' | 'read' | 'failed' | 'pending' | string;
   text?: { body: string };
-  image?: { id: string; caption?: string; mime_type?: string; localPreview?: string };
+  image?: { id: string; caption?: string; mime_type?: string };
   video?: { id: string; caption?: string; mime_type?: string };
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
@@ -71,14 +42,8 @@ interface Conversation {
   messages: WAMessage[];
   lastMessageTime: string;
   unreadCount?: number;
-  label?: string;
+  labels?: string[];
 }
-
-const PRIDEFINED_LABELS = [
-  { id: 'new', text: 'Pelanggan Baru', color: 'bg-emerald-100 text-emerald-700' },
-  { id: 'waiting', text: 'Menunggu Pembayaran', color: 'bg-amber-100 text-amber-700' },
-  { id: 'done', text: 'Selesai', color: 'bg-indigo-100 text-indigo-700' }
-];
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
@@ -119,7 +84,8 @@ export default function App() {
             text: { body: "Baik, bisa minta nomor resinya nanti kalau sudah ada?" }
           }
         ],
-        lastMessageTime: new Date(Date.now() - 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        lastMessageTime: new Date(Date.now() - 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        labels: ["Prospek"]
       },
       {
         id: "62899999999",
@@ -150,9 +116,6 @@ export default function App() {
   }, []);
   
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChatIdRef = useRef<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
@@ -163,7 +126,24 @@ export default function App() {
     accessToken: localStorage.getItem('wa_access_token') || '',
   });
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [showLabelMenu, setShowLabelMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const AVAILABLE_LABELS = ['Prospek', 'Selesai', 'Komplain'];
+
+  const toggleLabel = (chatId: string, label: string) => {
+    setConversations(prev => prev.map(c => {
+      if (c.id === chatId) {
+        const labels = c.labels || [];
+        if (labels.includes(label)) {
+          return { ...c, labels: labels.filter(l => l !== label) };
+        } else {
+          return { ...c, labels: [...labels, label] };
+        }
+      }
+      return c;
+    }));
+  };
 
   const activeChat = activeChatId ? conversations.find(c => c.id === activeChatId) : null;
 
@@ -404,7 +384,7 @@ export default function App() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() && !selectedImage) return;
+    if (!inputText.trim()) return;
 
     if (!config.phoneNumberId || !config.accessToken) {
       alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
@@ -417,10 +397,9 @@ export default function App() {
       from: "me",
       id: `local_${Date.now()}`,
       timestamp: Math.floor(Date.now() / 1000).toString(),
-      type: selectedImage ? "image" : "text",
+      type: "text",
       status: "pending",
-      text: selectedImage ? undefined : { body: inputText },
-      image: selectedImage ? { id: "local", caption: inputText, localPreview: selectedImagePreview as string } : undefined
+      text: { body: inputText }
     };
 
     setConversations(prev => {
@@ -437,34 +416,20 @@ export default function App() {
     });
 
     const messageToSend = inputText;
-    const isImageMode = !!selectedImage;
-    const base64Image = selectedImagePreview ? selectedImagePreview.split(',')[1] : null;
-    const mimeType = selectedImagePreview ? selectedImagePreview.split(';')[0].split(':')[1] : null;
-
     setInputText("");
-    setSelectedImage(null);
-    setSelectedImagePreview(null);
     
     try {
-      const endpoint = isImageMode ? '/api/send_image' : '/api/send';
-      const body = isImageMode 
-        ? { to: activeChat?.id, base64Image, mimeType, caption: messageToSend, token: config.accessToken, phoneId: config.phoneNumberId }
-        : { to: activeChat?.id, message: messageToSend, token: config.accessToken, phoneId: config.phoneNumberId };
-
-      const res = await fetch(endpoint, {
+      const res = await fetch('/api/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          to: activeChat.id,
+          message: messageToSend,
+          token: config.accessToken,
+          phoneId: config.phoneNumberId
+        })
       });
-      const responseText = await res.text();
-      let data: any;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error("Failed to parse response JSON", responseText);
-        alert(`Gagal mengirim pesan (Server Error): ` + responseText.substring(0, 100));
-        return;
-      }
+      const data: any = await res.json();
       if (!res.ok) {
         console.error("Failed to send", data);
         alert(`Gagal mengirim pesan: ${data.error?.message || JSON.stringify(data)}`);
@@ -625,11 +590,20 @@ export default function App() {
                     </span>
                   )}
                 </div>
-                {chat.label && (
-                  <div className="mt-2 flex space-x-2">
-                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${PRIDEFINED_LABELS.find(l => l.id === chat.label)?.color}`}>
-                      {PRIDEFINED_LABELS.find(l => l.id === chat.label)?.text}
-                    </span>
+                {chat.labels && chat.labels.length > 0 && (
+                  <div className="mt-2 flex space-x-1 flex-wrap gap-y-1">
+                    {chat.labels.map(label => {
+                      const color = 
+                        label === 'Prospek' ? 'bg-blue-100 text-blue-700' :
+                        label === 'Selesai' ? 'bg-emerald-100 text-emerald-700' :
+                        label === 'Komplain' ? 'bg-rose-100 text-rose-700' : 
+                        'bg-slate-100 text-slate-700';
+                      return (
+                        <span key={label} className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${color}`}>
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -648,13 +622,60 @@ export default function App() {
                   {activeChat.name.charAt(0)}
                 </div>
                 <div>
-                  <h2 className="font-bold text-slate-900">{activeChat.name}</h2>
+                  <h2 className="font-bold text-slate-900 flex items-center gap-2">
+                    {activeChat.name}
+                    {activeChat.labels && activeChat.labels.map(label => {
+                      const color = 
+                        label === 'Prospek' ? 'bg-blue-100 text-blue-700' :
+                        label === 'Selesai' ? 'bg-emerald-100 text-emerald-700' :
+                        label === 'Komplain' ? 'bg-rose-100 text-rose-700' : 
+                        'bg-slate-100 text-slate-700';
+                      return (
+                        <span key={label} className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${color}`}>
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </h2>
                   <p className="text-xs text-green-600 flex items-center font-medium">
                     <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5" /> Online
                   </p>
                 </div>
               </div>
-              <div className="flex space-x-2">
+              <div className="flex space-x-2 relative">
+                <button 
+                  onClick={() => setShowLabelMenu(!showLabelMenu)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                  title="Tag / Label Obrolan"
+                >
+                  <Tag className="w-5 h-5" />
+                </button>
+                
+                {showLabelMenu && (
+                  <div className="absolute top-12 right-0 w-48 bg-white border border-slate-200 shadow-xl rounded-xl z-50 overflow-hidden">
+                    <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500">
+                      Label Obrolan
+                    </div>
+                    <div className="p-1">
+                      {AVAILABLE_LABELS.map(label => {
+                        const hasLabel = activeChat.labels?.includes(label);
+                        return (
+                          <button 
+                            key={label}
+                            onClick={() => toggleLabel(activeChat.id, label)}
+                            className="w-full flex items-center px-3 py-2 text-sm text-left hover:bg-slate-50 rounded-lg transition-colors group"
+                          >
+                            <div className={`w-4 h-4 mr-3 flex items-center justify-center rounded border ${hasLabel ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 group-hover:border-indigo-400'}`}>
+                              {hasLabel && <CheckCircle2 className="w-3 h-3 text-white" />}
+                            </div>
+                            <span className="text-slate-700 font-medium">{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <button className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">
                   <Phone className="w-5 h-5" />
                 </button>
@@ -692,17 +713,17 @@ export default function App() {
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
                           <img 
-                            src={msg.image?.localPreview ? msg.image.localPreview : `/api/media?id=${msg.image?.id}&token=${config.accessToken}`} 
+                            src={`/api/media?id=${msg.image?.id}&token=${config.accessToken}`} 
                             alt={msg.image?.caption || "Gambar"} 
                             className="max-w-[240px] sm:max-w-xs rounded-xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity" 
                             loading="lazy" 
-                            onClick={() => msg.image?.localPreview ? setFullscreenImage(msg.image.localPreview) : setFullscreenImage(`/api/media?id=${msg.image?.id}&token=${config.accessToken}`)}
+                            onClick={() => setFullscreenImage(`/api/media?id=${msg.image?.id}&token=${config.accessToken}`)}
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';
                               (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                             }}
                           />
-                          <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100/20 rounded-lg mt-2">Gagal memuat gambar.</div>
+                          <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat gambar.</div>
                           {msg.image?.caption && <p className="text-sm mt-2">{globalSearchQuery ? renderHighlightedText(msg.image.caption, globalSearchQuery) : msg.image.caption}</p>}
                         </div>
                       )}
@@ -787,41 +808,8 @@ export default function App() {
             </section>
 
             <footer className="p-4 bg-white border-t border-slate-200">
-              {selectedImagePreview && (
-                <div className="mb-3 relative inline-block">
-                  <img src={selectedImagePreview} alt="Preview" className="h-24 w-auto rounded-lg object-cover border border-slate-200" />
-                  <button 
-                    onClick={() => { setSelectedImage(null); setSelectedImagePreview(null); }}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
               <div className="flex items-end space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 relative">
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  ref={fileInputRef} 
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      try {
-                        const compressedBase64 = await resizeImage(file);
-                        setSelectedImagePreview(compressedBase64);
-                        setSelectedImage(file);
-                      } catch (err) {
-                        console.error("Failed to resize image", err);
-                        alert("Gagal memproses gambar.");
-                      }
-                    }
-                  }}
-                  className="hidden" 
-                />
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5"
-                >
+                <button className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5">
                   <Paperclip className="w-5 h-5" />
                 </button>
                 <textarea 
@@ -833,13 +821,13 @@ export default function App() {
                       handleSendMessage();
                     }
                   }}
-                  placeholder={selectedImage ? "Tambah keterangan..." : "Ketik balasan Anda..."}
+                  placeholder="Ketik balasan Anda..." 
                   className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-2.5 px-2 focus:outline-none resize-none" 
                   rows={Math.min(Math.max(inputText.split('\n').length, 1), 5)}
                 />
                 <button 
                   onClick={handleSendMessage}
-                  disabled={!inputText.trim() && !selectedImage}
+                  disabled={!inputText.trim()}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex flex-row items-center gap-2 mb-0.5"
                 >
                   <Send className="w-4 h-4" />
@@ -867,26 +855,6 @@ export default function App() {
           </div>
 
           <div className="mt-8 space-y-6">
-            <div>
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Label Percakapan</h4>
-              <select 
-                title="Pilih Label"
-                value={activeChat.label || ""}
-                onChange={(e) => {
-                  const newLabel = e.target.value;
-                  setConversations(prev => prev.map(chat => 
-                    chat.id === activeChat.id ? { ...chat, label: newLabel } : chat
-                  ));
-                }}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2"
-              >
-                <option value="">Tanpa Label</option>
-                {PRIDEFINED_LABELS.map(lbl => (
-                  <option key={lbl.id} value={lbl.id}>{lbl.text}</option>
-                ))}
-              </select>
-            </div>
-
             <div>
               <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Kontak Details</h4>
               <div className="space-y-2">
