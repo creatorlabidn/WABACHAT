@@ -118,6 +118,9 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
   const [inputText, setInputText] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -404,7 +407,7 @@ export default function App() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && !attachment) return;
 
     if (!config.phoneNumberId || !config.accessToken) {
       alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
@@ -412,33 +415,65 @@ export default function App() {
       return;
     }
     
-    // Optimistic UI update
-    const newMsg: WAMessage = {
-      from: "me",
-      id: `local_${Date.now()}`,
-      timestamp: Math.floor(Date.now() / 1000).toString(),
-      type: "text",
-      status: "pending",
-      text: { body: inputText }
-    };
+    setIsUploading(true);
 
-    setConversations(prev => {
-      return prev.map(chat => {
-        if (chat.id === activeChatId) {
-          return {
-            ...chat,
-            messages: [...chat.messages, newMsg],
-            lastMessageTime: formatTimestamp(newMsg.timestamp)
-          };
-        }
-        return chat;
-      });
-    });
-
-    const messageToSend = inputText;
-    setInputText("");
-    
     try {
+      let mediaId: string | undefined;
+
+      // Handle file upload if there's an attachment
+      if (attachment) {
+        const formData = new FormData();
+        formData.append("file", attachment);
+        formData.append("token", config.accessToken);
+        formData.append("phoneId", config.phoneNumberId);
+
+        const uploadRes = await fetch("/api/upload-media", {
+          method: "POST",
+          body: formData
+        });
+
+        const uploadData: any = await uploadRes.json();
+        if (!uploadRes.ok) {
+          throw new Error(`Upload failed: ${uploadData.error?.message || JSON.stringify(uploadData)}`);
+        }
+        
+        mediaId = uploadData.id;
+        if (!mediaId) {
+          throw new Error("Failed to get media ID from WhatsApp API");
+        }
+      }
+
+      const messageToSend = inputText;
+      const cachedAttachment = attachment;
+      
+      // Update UI optimistically after upload starts/finishes for the message
+      const newMsg: WAMessage = {
+        from: "me",
+        id: `local_${Date.now()}`,
+        timestamp: Math.floor(Date.now() / 1000).toString(),
+        type: mediaId ? "image" : "text",
+        status: "pending",
+        text: mediaId ? undefined : { body: messageToSend },
+        image: mediaId ? { id: mediaId, caption: messageToSend } : undefined
+      };
+
+      setConversations(prev => {
+        return prev.map(chat => {
+          if (chat.id === activeChatId) {
+            return {
+              ...chat,
+              messages: [...chat.messages, newMsg],
+              lastMessageTime: formatTimestamp(newMsg.timestamp)
+            };
+          }
+          return chat;
+        });
+      });
+
+      setInputText("");
+      setAttachment(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+
       const res = await fetch('/api/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -446,7 +481,9 @@ export default function App() {
           to: activeChat.id,
           message: messageToSend,
           token: config.accessToken,
-          phoneId: config.phoneNumberId
+          phoneId: config.phoneNumberId,
+          type: mediaId ? "image" : "text",
+          mediaId: mediaId
         })
       });
       const data: any = await res.json();
@@ -470,9 +507,11 @@ export default function App() {
           });
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Gagal mengirim pesan, periksa koneksi Anda.');
+      alert(err.message || 'Gagal mengirim pesan, periksa koneksi Anda.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -834,9 +873,45 @@ export default function App() {
               <div ref={messagesEndRef} />
             </section>
 
-            <footer className="p-4 bg-white border-t border-slate-200">
+            <footer className="p-4 bg-white border-t border-slate-200 flex flex-col gap-2">
+              {attachment && (
+                <div className="flex items-center gap-3 p-2 bg-slate-50 border border-slate-200 rounded-xl relative">
+                  {attachment.type.startsWith('image/') ? (
+                    <img src={URL.createObjectURL(attachment)} alt="preview" className="w-16 h-16 object-cover rounded-lg" />
+                  ) : (
+                    <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center">
+                      <Paperclip className="w-8 h-8 text-slate-400" />
+                    </div>
+                  )}
+                  <div className="flex-1 truncate text-sm font-medium text-slate-700">
+                    {attachment.name}
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setAttachment(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
               <div className="flex items-end space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 relative">
-                <button className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setAttachment(file);
+                  }}
+                  accept="image/*,video/*,application/pdf"
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5"
+                >
                   <Paperclip className="w-5 h-5" />
                 </button>
                 <textarea 
@@ -854,11 +929,11 @@ export default function App() {
                 />
                 <button 
                   onClick={handleSendMessage}
-                  disabled={!inputText.trim()}
+                  disabled={(!inputText.trim() && !attachment) || isUploading}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex flex-row items-center gap-2 mb-0.5"
                 >
-                  <Send className="w-4 h-4" />
-                  Kirim
+                  {isUploading ? <CircleDashed className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {isUploading ? 'Mengirim...' : 'Kirim'}
                 </button>
               </div>
             </footer>

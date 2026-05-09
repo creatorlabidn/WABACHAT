@@ -2,9 +2,11 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import multer from "multer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const upload = multer({ limits: { fileSize: 16 * 1024 * 1024 } }); // 16MB limit
 
 // In-memory store for messages and events
 const webhooks: any[] = [];
@@ -15,6 +17,78 @@ async function startServer() {
   const PORT = process.env.PORT || 3000;
 
   app.use(express.json());
+
+  // SEND MESSAGE ENDPOINT
+  app.post("/api/send", async (req, res) => {
+    try {
+      const { to, message, token, phoneId, type, mediaId } = req.body;
+      
+      let data: any = {
+        messaging_product: "whatsapp",
+        to,
+      };
+
+      if (type === "image" && mediaId) {
+        data.type = "image";
+        data.image = {
+          id: mediaId,
+          caption: message || ""
+        };
+      } else {
+        data.type = "text";
+        data.text = { body: message };
+      }
+
+      const response = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json" // Use JSON for text or sending media by ID
+        },
+        body: JSON.stringify(data)
+      });
+      
+      const result = await response.json();
+      res.status(response.status).json(result);
+    } catch (e) {
+      console.error("Failed to send message:", e);
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  // UPLOAD MEDIA ENDPOINT
+  app.post("/api/upload-media", upload.single("file"), async (req, res) => {
+    try {
+      const { token, phoneId } = req.body;
+      const file = req.file;
+
+      if (!file || !token || !phoneId) {
+        return res.status(400).json({ error: "Missing required parameters" });
+      }
+
+      // Convert buffer to Blob for native fetch FormData
+      const blob = new Blob([file.buffer], { type: file.mimetype });
+      
+      const formData = new globalThis.FormData();
+      formData.append('file', blob, file.originalname);
+      formData.append('messaging_product', 'whatsapp');
+
+      const response = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/media`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
+        body: formData as any
+      });
+
+      const result = await response.json();
+      res.status(response.status).json(result);
+    } catch (e) {
+      console.error("Failed to upload media:", e);
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
 
   // SSE setup for real-time updates to frontend
   app.get("/api/events", (req, res) => {
