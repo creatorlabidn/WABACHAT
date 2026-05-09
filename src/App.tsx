@@ -150,6 +150,8 @@ export default function App() {
   });
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
+  const [hoveredChatId, setHoveredChatId] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const labelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -677,6 +679,7 @@ export default function App() {
           }).map(chat => {
             const lastMsg = chat.messages[chat.messages.length - 1];
             const isActive = chat.id === activeChatId;
+            const unreadMessages = chat.messages.filter(m => m.from !== 'me' && m.status !== 'read_by_me').slice(-10);
             return (
               <div 
                 key={chat.id}
@@ -688,12 +691,54 @@ export default function App() {
                     ));
                   }
                 }}
-                className={`p-4 border-l-4 cursor-pointer transition-colors ${
+                onMouseEnter={() => {
+                  if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                  hoverTimeoutRef.current = setTimeout(() => {
+                    if (chat.unreadCount && chat.unreadCount > 0) setHoveredChatId(chat.id);
+                  }, 400);
+                }}
+                onMouseLeave={() => {
+                  if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                  setHoveredChatId(null);
+                }}
+                className={`relative p-4 border-l-4 cursor-pointer transition-colors ${
                   isActive 
                     ? 'bg-indigo-50 border-indigo-600' 
                     : 'hover:bg-slate-50 border-transparent'
                 }`}
               >
+                {hoveredChatId === chat.id && unreadMessages.length > 0 && (
+                  <div className="absolute left-full top-0 ml-2 z-50 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-indigo-600 flex items-center justify-between">
+                      <span className="text-white text-xs font-bold">{chat.name}</span>
+                      <span className="text-indigo-200 text-[10px]">{unreadMessages.length} pesan belum dibaca</span>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                      {unreadMessages.map(msg => (
+                        <div key={msg.id} className="px-4 py-2.5">
+                          <p className="text-[10px] text-slate-400 mb-0.5">
+                            {new Date(parseInt(msg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          {msg.referral && (
+                            <div className="flex items-center gap-1 text-[10px] text-indigo-500 mb-1">
+                              📢 <span>Pesan dari iklan: <span className="font-semibold">{msg.referral.headline}</span></span>
+                            </div>
+                          )}
+                          <p className="text-sm text-slate-700 break-words">
+                            {msg.type === 'text' ? msg.text?.body
+                              : msg.type === 'image' ? `🖼️ ${msg.image?.caption || '[Gambar]'}`
+                              : msg.type === 'video' ? `🎥 ${msg.video?.caption || '[Video]'}`
+                              : msg.type === 'document' ? `📄 ${msg.document?.filename || '[Dokumen]'}`
+                              : `[${msg.type}]`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 py-2 bg-slate-50 text-center">
+                      <span className="text-[10px] text-slate-400">Klik untuk membuka chat</span>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between items-start">
                   <span className={`font-semibold truncate pr-2 ${chat.unreadCount ? 'text-slate-900 font-bold' : 'text-slate-900'}`}>{chat.name}</span>
                   <span className={`text-xs whitespace-nowrap ${isActive ? 'text-indigo-600 font-medium' : chat.unreadCount ? 'text-indigo-600 font-bold' : 'text-slate-400'}`}>
