@@ -279,7 +279,6 @@ export default function App() {
         webhooks.forEach((payload: any) => {
           if (payload.error) {
             console.error(payload.message);
-            // Optionally we could show a toast here, but console is good enough for now
             return;
           }
           if (
@@ -294,7 +293,7 @@ export default function App() {
               const statusUpdates = value.statuses;
               statusUpdates.forEach((statusUpdate: any) => {
                 const foundChat = conversationsRef.current.find(c => c.messages.some(m => m.id === statusUpdate.id));
-                if (!foundChat) return; // Wait until local message gets real ID
+                if (!foundChat) return;
 
                 if (processedMsgIds.has(`${statusUpdate.id}_${statusUpdate.status}`)) return;
                 processedMsgIds.add(`${statusUpdate.id}_${statusUpdate.status}`);
@@ -681,7 +680,6 @@ export default function App() {
           }).map(chat => {
             const lastMsg = chat.messages[chat.messages.length - 1];
             const isActive = chat.id === activeChatId;
-            const unreadMessages = chat.messages.filter(m => m.from !== 'me' && m.status !== 'read_by_me').slice(-10);
             return (
               <div 
                 key={chat.id}
@@ -695,10 +693,30 @@ export default function App() {
                 }}
                 onMouseEnter={(e) => {
                   if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                  // Capture target before setTimeout — synthetic event becomes invalid after delay
+                  const target = e.currentTarget as HTMLElement;
                   hoverTimeoutRef.current = setTimeout(() => {
                     if (chat.unreadCount && chat.unreadCount > 0) {
-                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setHoverPos({ top: rect.top, left: rect.right + 8 });
+                      const rect = target.getBoundingClientRect();
+                      const popupWidth = 288; // w-72
+                      const popupMaxHeight = 340;
+                      const viewportHeight = window.innerHeight;
+                      const viewportWidth = window.innerWidth;
+
+                      // Position to the right of the nav panel
+                      let leftPos = rect.right + 8;
+                      // If popup would overflow right edge, flip to left
+                      if (leftPos + popupWidth > viewportWidth - 8) {
+                        leftPos = rect.left - popupWidth - 8;
+                      }
+
+                      // Align top with hovered item, clamp so popup stays in viewport
+                      let topPos = rect.top;
+                      if (topPos + popupMaxHeight > viewportHeight - 16) {
+                        topPos = Math.max(16, viewportHeight - popupMaxHeight - 16);
+                      }
+
+                      setHoverPos({ top: topPos, left: leftPos });
                       setHoveredChatId(chat.id);
                     }
                   }, 400);
@@ -750,20 +768,22 @@ export default function App() {
           })}
         </div>
 
-
-      </nav>
-
-      {/* Portal: Hover Preview Popup - rendered to document.body */}
-      {hoveredChatId && createPortal(
-        (() => {
+        {/* Portal: Hover Preview Popup — rendered to document.body, always above everything */}
+        {hoveredChatId && (() => {
           const hoveredChat = conversations.find(c => c.id === hoveredChatId);
-          if (!hoveredChat) return <></>;
+          if (!hoveredChat) return null;
           const unreadMsgs = hoveredChat.messages.filter(m => m.from !== 'me' && m.status !== 'read_by_me').slice(-10);
-          if (unreadMsgs.length === 0) return <></>;
-          return (
+          if (unreadMsgs.length === 0) return null;
+          return createPortal(
             <div
-              className="fixed z-[9999] w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden pointer-events-none"
-              style={{ top: hoverPos.top, left: hoverPos.left }}
+              className="fixed w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden pointer-events-none"
+              style={{
+                top: hoverPos.top,
+                left: hoverPos.left,
+                // Ensure popup is always rendered above every other element
+                zIndex: 2147483647,
+                maxHeight: 'calc(100vh - 32px)',
+              }}
             >
               <div className="px-4 py-2.5 bg-indigo-600 flex items-center justify-between">
                 <span className="text-white text-xs font-bold">{hoveredChat.name}</span>
@@ -793,13 +813,13 @@ export default function App() {
               <div className="px-4 py-2 bg-slate-50 text-center">
                 <span className="text-[10px] text-slate-400">Klik untuk membuka chat</span>
               </div>
-            </div>
+            </div>,
+            document.body
           );
-        })(),
-        document.body
-      )}
+        })()}
+      </nav>
 
-      {/* Chat View */
+      {/* Chat View */}
       <main className="flex-1 flex flex-col bg-[#F8FAFC]">
         {activeChat ? (
           <>
