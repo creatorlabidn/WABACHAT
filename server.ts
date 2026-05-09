@@ -21,29 +21,37 @@ async function startServer() {
   // SEND MESSAGE ENDPOINT
   app.post("/api/send", async (req, res) => {
     try {
-      const { to, message, token, phoneId, type, mediaId } = req.body;
+      const { to, message, token, phoneId, type, mediaId, filename, replyToId } = req.body;
       
       let data: any = {
         messaging_product: "whatsapp",
         to,
       };
 
+      // Support reply (context)
+      if (replyToId) {
+        data.context = { message_id: replyToId };
+      }
+
       if (type === "image" && mediaId) {
         data.type = "image";
-        data.image = {
-          id: mediaId,
-          caption: message || ""
-        };
+        data.image = { id: mediaId, caption: message || "" };
+      } else if (type === "video" && mediaId) {
+        data.type = "video";
+        data.video = { id: mediaId, caption: message || "" };
+      } else if (type === "document" && mediaId) {
+        data.type = "document";
+        data.document = { id: mediaId, caption: message || "", filename: filename || "document.pdf" };
       } else {
         data.type = "text";
         data.text = { body: message };
       }
 
-      const response = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
+      const response = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json" // Use JSON for text or sending media by ID
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(data)
       });
@@ -159,17 +167,15 @@ async function startServer() {
       if (
         req.body.entry &&
         req.body.entry[0].changes &&
-        req.body.entry[0].changes[0] &&
-        req.body.entry[0].changes[0].value.messages &&
-        req.body.entry[0].changes[0].value.messages[0]
+        req.body.entry[0].changes[0]
       ) {
+        // Simpan semua event: pesan baru DAN status updates (sent/delivered/read)
         webhooks.push(req.body);
         
         // Notify all connected clients
         clients.forEach(client => {
           client.write(`data: ${JSON.stringify({ type: 'new_message', payload: req.body })}\n\n`);
         });
-
       }
       res.sendStatus(200);
     } else {

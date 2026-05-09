@@ -266,7 +266,13 @@ export default function App() {
     const fetchWebhooks = async () => {
       try {
         const phoneId = configRef.current.phoneNumberId;
-        const phoneIdParam = phoneId ? `&phoneId=${encodeURIComponent(phoneId)}` : '';
+
+        // Jangan fetch jika Phone Number ID belum dikonfigurasi —
+        // tanpa filter phoneId, server akan mengembalikan SEMUA pesan
+        // dari semua nomor yang pernah masuk, bukan milik akun ini.
+        if (!phoneId) return;
+
+        const phoneIdParam = `&phoneId=${encodeURIComponent(phoneId)}`;
         const res = await fetch(`/api/webhooks?t=${Date.now()}${phoneIdParam}`, {
           headers: {
             'Cache-Control': 'no-cache',
