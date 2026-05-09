@@ -14,7 +14,8 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // SSE setup for real-time updates to frontend
   app.get("/api/events", (req, res) => {
@@ -39,6 +40,146 @@ async function startServer() {
   // Fetch all stored webhook events
   app.get("/api/webhooks", (req, res) => {
     res.json(webhooks);
+  });
+
+  // Proxy Media
+  app.get("/api/media", async (req, res) => {
+    const { id, token } = req.query;
+    if (!id || !token) return res.status(400).send("Missing id or token");
+    try {
+      const urlRes = await fetch(`https://graph.facebook.com/v17.0/${id}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const urlData: any = await urlRes.json();
+      if (!urlData.url) return res.status(404).send("Media not found");
+
+      const mediaRes = await fetch(urlData.url, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const arrayBuffer = await mediaRes.arrayBuffer();
+      res.setHeader('Content-Type', mediaRes.headers.get('content-type') || 'application/octet-stream');
+      res.send(Buffer.from(arrayBuffer));
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
+
+  // Send Message
+  app.post("/api/send", async (req, res) => {
+    const { to, message, token, phoneId } = req.body;
+    try {
+      const response = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to,
+          type: "text",
+          text: {
+            preview_url: false,
+            body: message
+          }
+        })
+      });
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: { message: e.message } });
+    }
+  });
+
+  // Send Image
+  app.post("/api/send_image", async (req, res) => {
+    const { to, base64Image, mimeType, caption, token, phoneId } = req.body;
+    try {
+      // 1. Upload to /media
+      const buffer = Buffer.from(base64Image, 'base64');
+      const blob = new Blob([buffer], { type: mimeType });
+      const formData = new FormData();
+      formData.append('file', blob, 'image');
+      formData.append('messaging_product', 'whatsapp');
+
+      const uploadRes = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/media`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData
+      });
+      const uploadData: any = await uploadRes.json();
+      if (!uploadRes.ok) return res.status(uploadRes.status).json(uploadData);
+      const mediaId = uploadData.id;
+
+      // 2. Send message
+      const sendRes = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to,
+          type: "image",
+          image: {
+            id: mediaId,
+            caption: caption || ""
+          }
+        })
+      });
+      const sendData = await sendRes.json();
+      res.status(sendRes.status).json(sendData);
+    } catch (e: any) {
+      res.status(500).json({ error: { message: e.message } });
+    }
+  });
+
+  // React to Message
+  app.post("/api/react", async (req, res) => {
+    const { to, message_id, emoji, token, phoneId } = req.body;
+    try {
+      const response = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to,
+          type: "reaction",
+          reaction: {
+            message_id,
+            emoji
+          }
+        })
+      });
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: { message: e.message } });
+    }
+  });
+
+  // Mark Read
+  app.post("/api/read", async (req, res) => {
+    const { messageId, token, phoneId } = req.body;
+    try {
+      const response = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          status: "read",
+          message_id: messageId
+        })
+      });
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: { message: e.message } });
+    }
   });
 
   // WhatsApp Webhook Verification

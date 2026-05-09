@@ -42,7 +42,14 @@ interface Conversation {
   messages: WAMessage[];
   lastMessageTime: string;
   unreadCount?: number;
+  label?: string;
 }
+
+const PRIDEFINED_LABELS = [
+  { id: 'new', text: 'Pelanggan Baru', color: 'bg-emerald-100 text-emerald-700' },
+  { id: 'waiting', text: 'Menunggu Pembayaran', color: 'bg-amber-100 text-amber-700' },
+  { id: 'done', text: 'Selesai', color: 'bg-indigo-100 text-indigo-700' }
+];
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
@@ -114,6 +121,9 @@ export default function App() {
   }, []);
   
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChatIdRef = useRef<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
@@ -365,7 +375,7 @@ export default function App() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && !selectedImage) return;
 
     if (!config.phoneNumberId || !config.accessToken) {
       alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
@@ -378,9 +388,10 @@ export default function App() {
       from: "me",
       id: `local_${Date.now()}`,
       timestamp: Math.floor(Date.now() / 1000).toString(),
-      type: "text",
+      type: selectedImage ? "image" : "text",
       status: "pending",
-      text: { body: inputText }
+      text: selectedImage ? undefined : { body: inputText },
+      image: selectedImage ? { id: "local", caption: inputText } : undefined
     };
 
     setConversations(prev => {
@@ -397,18 +408,24 @@ export default function App() {
     });
 
     const messageToSend = inputText;
+    const isImageMode = !!selectedImage;
+    const base64Image = selectedImagePreview ? selectedImagePreview.split(',')[1] : null;
+    const mimeType = selectedImage?.type;
+
     setInputText("");
+    setSelectedImage(null);
+    setSelectedImagePreview(null);
     
     try {
-      const res = await fetch('/api/send', {
+      const endpoint = isImageMode ? '/api/send_image' : '/api/send';
+      const body = isImageMode 
+        ? { to: activeChat?.id, base64Image, mimeType, caption: messageToSend, token: config.accessToken, phoneId: config.phoneNumberId }
+        : { to: activeChat?.id, message: messageToSend, token: config.accessToken, phoneId: config.phoneNumberId };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: activeChat.id,
-          message: messageToSend,
-          token: config.accessToken,
-          phoneId: config.phoneNumberId
-        })
+        body: JSON.stringify(body)
       });
       const data: any = await res.json();
       if (!res.ok) {
@@ -571,9 +588,11 @@ export default function App() {
                     </span>
                   )}
                 </div>
-                {isActive && chat.id === "16315551234" && (
+                {chat.label && (
                   <div className="mt-2 flex space-x-2">
-                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded uppercase">New Order</span>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${PRIDEFINED_LABELS.find(l => l.id === chat.label)?.color}`}>
+                      {PRIDEFINED_LABELS.find(l => l.id === chat.label)?.text}
+                    </span>
                   </div>
                 )}
               </div>
@@ -731,8 +750,39 @@ export default function App() {
             </section>
 
             <footer className="p-4 bg-white border-t border-slate-200">
+              {selectedImagePreview && (
+                <div className="mb-3 relative inline-block">
+                  <img src={selectedImagePreview} alt="Preview" className="h-24 w-auto rounded-lg object-cover border border-slate-200" />
+                  <button 
+                    onClick={() => { setSelectedImage(null); setSelectedImagePreview(null); }}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
               <div className="flex items-end space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 relative">
-                <button className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5">
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  ref={fileInputRef} 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setSelectedImage(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setSelectedImagePreview(reader.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="hidden" 
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5"
+                >
                   <Paperclip className="w-5 h-5" />
                 </button>
                 <textarea 
@@ -744,13 +794,13 @@ export default function App() {
                       handleSendMessage();
                     }
                   }}
-                  placeholder="Ketik balasan Anda..." 
+                  placeholder={selectedImage ? "Tambah keterangan..." : "Ketik balasan Anda..."}
                   className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-2.5 px-2 focus:outline-none resize-none" 
                   rows={Math.min(Math.max(inputText.split('\n').length, 1), 5)}
                 />
                 <button 
                   onClick={handleSendMessage}
-                  disabled={!inputText.trim()}
+                  disabled={!inputText.trim() && !selectedImage}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex flex-row items-center gap-2 mb-0.5"
                 >
                   <Send className="w-4 h-4" />
@@ -778,6 +828,26 @@ export default function App() {
           </div>
 
           <div className="mt-8 space-y-6">
+            <div>
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Label Percakapan</h4>
+              <select 
+                title="Pilih Label"
+                value={activeChat.label || ""}
+                onChange={(e) => {
+                  const newLabel = e.target.value;
+                  setConversations(prev => prev.map(chat => 
+                    chat.id === activeChat.id ? { ...chat, label: newLabel } : chat
+                  ));
+                }}
+                className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2"
+              >
+                <option value="">Tanpa Label</option>
+                {PRIDEFINED_LABELS.map(lbl => (
+                  <option key={lbl.id} value={lbl.id}>{lbl.text}</option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Kontak Details</h4>
               <div className="space-y-2">
