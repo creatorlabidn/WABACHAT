@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
   Search, Send, CheckCircle2, CircleDashed, X, Tag
@@ -115,6 +115,11 @@ export default function App() {
       Notification.requestPermission();
     }
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowMillis(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, []);
   
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
@@ -122,6 +127,7 @@ export default function App() {
   const [attachment, setAttachment] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [nowMillis, setNowMillis] = useState(Date.now());
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -581,6 +587,21 @@ export default function App() {
     }
   };
 
+  const activeChatWindow = useMemo(() => {
+    if (!activeChat) return { isOpen: false, text: "" };
+    const lastUserMsg = activeChat.messages.slice().reverse().find(m => m.from !== 'me');
+    if (!lastUserMsg) return { isOpen: false, text: "Sesi belum dimulai" };
+    
+    const lastTime = parseInt(lastUserMsg.timestamp) * 1000;
+    const msRemaining = lastTime + 24 * 60 * 60 * 1000 - nowMillis;
+    if (msRemaining > 0) {
+      const hours = Math.floor(msRemaining / (1000 * 60 * 60));
+      const minutes = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
+      return { isOpen: true, text: `Sisa waktu sesi: ${hours}j ${minutes}m` };
+    }
+    return { isOpen: false, text: "Sesi 24 jam telah berakhir" };
+  }, [activeChat, nowMillis]);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
       {/* Global Sidebar */}
@@ -712,8 +733,14 @@ export default function App() {
                       );
                     })}
                   </h2>
-                  <p className="text-xs text-green-600 flex items-center font-medium">
-                    <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5" /> Online
+                  <p className="text-xs flex items-center font-medium mt-0.5">
+                    <span className="text-green-600 flex items-center">
+                      <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5" /> Online
+                    </span>
+                    <span className="mx-2 text-slate-300">|</span>
+                    <span className={activeChatWindow.isOpen ? 'text-indigo-600' : 'text-rose-500'}>
+                      {activeChatWindow.text}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -937,6 +964,7 @@ export default function App() {
                   type="file" 
                   ref={fileInputRef} 
                   className="hidden" 
+                  disabled={!activeChatWindow.isOpen}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) setAttachment(file);
@@ -945,26 +973,28 @@ export default function App() {
                 />
                 <button 
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5"
+                  disabled={!activeChatWindow.isOpen}
+                  className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors mb-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 >
                   <Paperclip className="w-5 h-5" />
                 </button>
                 <textarea 
                   value={inputText}
+                  disabled={!activeChatWindow.isOpen}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    if (e.key === 'Enter' && !e.shiftKey && activeChatWindow.isOpen) {
                       e.preventDefault();
                       handleSendMessage();
                     }
                   }}
-                  placeholder="Ketik balasan Anda..." 
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-2.5 px-2 focus:outline-none resize-none" 
+                  placeholder={activeChatWindow.isOpen ? "Ketik balasan Anda..." : "Sesi ditutup (Waktu 24 jam habis)"} 
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-2.5 px-2 focus:outline-none resize-none disabled:text-slate-400 disabled:cursor-not-allowed" 
                   rows={Math.min(Math.max(inputText.split('\n').length, 1), 5)}
                 />
                 <button 
                   onClick={handleSendMessage}
-                  disabled={(!inputText.trim() && !attachment) || isUploading}
+                  disabled={(!inputText.trim() && !attachment) || isUploading || !activeChatWindow.isOpen}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex flex-row items-center gap-2 mb-0.5"
                 >
                   {isUploading ? <CircleDashed className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
