@@ -9,7 +9,8 @@ const __dirname = path.dirname(__filename);
 const upload = multer({ limits: { fileSize: 16 * 1024 * 1024 } }); // 16MB limit
 
 // In-memory store for messages and events
-const webhooks: any[] = [];
+const webhooks: any[] = [];   // pesan masuk
+const outgoing: any[] = [];   // pesan keluar
 const clients: express.Response[] = [];
 
 async function startServer() {
@@ -56,7 +57,41 @@ async function startServer() {
         body: JSON.stringify(data)
       });
       
-      const result = await response.json();
+      const result: any = await response.json();
+
+      // Simpan pesan keluar ke in-memory store jika berhasil
+      if (response.ok && result.messages && result.messages.length > 0) {
+        const realMessageId = result.messages[0].id;
+        const outgoingEntry = {
+          object: "whatsapp_business_account",
+          entry: [{
+            changes: [{
+              value: {
+                messaging_product: "whatsapp",
+                metadata: { phone_number_id: phoneId },
+                messages: [{
+                  from: "me",
+                  id: realMessageId,
+                  timestamp: Math.floor(Date.now() / 1000).toString(),
+                  type: type || "text",
+                  ...(type === "text" || !type ? { text: { body: message } } : {}),
+                  ...(type === "image" && mediaId ? { image: { id: mediaId, caption: message || "" } } : {}),
+                  ...(type === "video" && mediaId ? { video: { id: mediaId, caption: message || "" } } : {}),
+                  ...(type === "document" && mediaId ? { document: { id: mediaId, caption: message || "", filename: filename || "document.pdf" } } : {}),
+                  ...(replyToId ? { context: { id: replyToId } } : {}),
+                }],
+                contacts: [{ profile: { name: "Me" }, wa_id: phoneId }],
+              },
+              field: "messages"
+            }]
+          }],
+          _outgoing: true,
+          _to: to,
+        };
+        outgoing.push(outgoingEntry);
+        if (outgoing.length > 200) outgoing.shift();
+      }
+
       res.status(response.status).json(result);
     } catch (e) {
       console.error("Failed to send message:", e);
@@ -130,9 +165,16 @@ async function startServer() {
     });
   });
 
-  // Fetch all stored webhook events
+  // Fetch all stored webhook events (incoming + outgoing)
   app.get("/api/webhooks", (req, res) => {
-    res.json(webhooks);
+    const getTimestamp = (payload: any): number => {
+      try {
+        const ts = payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.timestamp;
+        return ts ? parseInt(ts) : 0;
+      } catch { return 0; }
+    };
+    const all = [...webhooks, ...outgoing].sort((a, b) => getTimestamp(a) - getTimestamp(b));
+    res.json(all);
   });
 
   // WhatsApp Webhook Verification

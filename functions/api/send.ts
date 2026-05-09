@@ -1,4 +1,4 @@
-export const onRequestPost: PagesFunction = async (context) => {
+export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const body = await context.request.json() as any;
     const { to, message, token, phoneId, type, mediaId, filename, replyToId } = body;
@@ -52,7 +52,54 @@ export const onRequestPost: PagesFunction = async (context) => {
       body: JSON.stringify(payload)
     });
 
-    const data = await waRes.json();
+    const data = await waRes.json() as any;
+
+    // Simpan pesan keluar ke KV jika berhasil
+    if (waRes.ok && data.messages && data.messages.length > 0 && context.env.WA_WEBHOOKS) {
+      try {
+        const realMessageId = data.messages[0].id;
+
+        // Buat struktur yang seragam dengan format webhook masuk dari WhatsApp
+        const outgoingEntry = {
+          object: "whatsapp_business_account",
+          entry: [{
+            changes: [{
+              value: {
+                messaging_product: "whatsapp",
+                metadata: { phone_number_id: phoneId },
+                messages: [{
+                  from: "me",
+                  id: realMessageId,
+                  timestamp: Math.floor(Date.now() / 1000).toString(),
+                  type: type || "text",
+                  ...(type === "text" || !type ? { text: { body: message } } : {}),
+                  ...(type === "image" && mediaId ? { image: { id: mediaId, caption: message || "" } } : {}),
+                  ...(type === "video" && mediaId ? { video: { id: mediaId, caption: message || "" } } : {}),
+                  ...(type === "document" && mediaId ? { document: { id: mediaId, caption: message || "", filename: filename || "document.pdf" } } : {}),
+                  ...(replyToId ? { context: { id: replyToId } } : {}),
+                }],
+                contacts: [{ profile: { name: "Me" }, wa_id: phoneId }],
+              },
+              field: "messages"
+            }]
+          }],
+          _outgoing: true,       // flag untuk membedakan dari pesan masuk
+          _to: to,               // nomor tujuan, untuk filter di frontend
+        };
+
+        const existingStr = await context.env.WA_WEBHOOKS.get("outgoing") || "[]";
+        const existing: any[] = JSON.parse(existingStr);
+        existing.push(outgoingEntry);
+
+        // Batasi 200 pesan keluar terakhir
+        if (existing.length > 200) existing.shift();
+
+        await context.env.WA_WEBHOOKS.put("outgoing", JSON.stringify(existing));
+      } catch (kvErr) {
+        // Jangan gagalkan response utama jika KV error
+        console.error("KV save outgoing error:", kvErr);
+      }
+    }
     
     return new Response(JSON.stringify(data), {
       status: waRes.status,

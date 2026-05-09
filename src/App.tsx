@@ -296,10 +296,12 @@ export default function App() {
               processedMsgIds.add(newMsg.id);
 
               const contact = contacts ? contacts[0] : null;
-              const phone = newMsg.from;
+              // Untuk pesan keluar (_outgoing), gunakan _to sebagai ID chat
+              const isOutgoing = payload._outgoing === true;
+              const phone = isOutgoing ? payload._to : newMsg.from;
               const defaultName = contact ? contact.profile.name : `+${phone}`;
 
-              if (!isInitialFetchRef.current && Notification.permission === "granted") {
+              if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
                 if (!isCurrentlyActive || document.hidden) {
                   const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : `[${newMsg.type}]`;
@@ -357,7 +359,8 @@ export default function App() {
                     ...existingChat,
                     messages: [...existingChat.messages, newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    unreadCount: isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
+                    // Pesan keluar tidak menambah unread count
+                    unreadCount: isOutgoing ? (existingChat.unreadCount || 0) : isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
                   };
                   return [updatedChat, ...prev.filter(c => c.id !== phone)];
                 } else {
@@ -367,7 +370,7 @@ export default function App() {
                     phone: `+${phone}`,
                     messages: [newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    unreadCount: isCurrentlyActive || isInitial ? 0 : 1
+                    unreadCount: isOutgoing || isCurrentlyActive || isInitial ? 0 : 1
                   };
                   return [newChat, ...prev];
                 }
@@ -878,7 +881,7 @@ export default function App() {
                 const imageCaption = msg.image?.caption?.toLowerCase() || '';
                 const videoCaption = msg.video?.caption?.toLowerCase() || '';
                 return textBody.includes(query) || imageCaption.includes(query) || videoCaption.includes(query);
-              }).map((msg) => {
+              }).slice().sort((a, b) => parseInt(a.timestamp) - parseInt(b.timestamp)).map((msg) => {
                 if (msg.type === 'unsupported') return null;
                 const isMe = msg.from === "me";
                 return (
