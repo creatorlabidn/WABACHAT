@@ -17,6 +17,35 @@ const renderHighlightedText = (text: string, highlight: string) => {
   );
 };
 
+const resizeImage = (file: File, maxSize: number = 800): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > height && width > maxSize) {
+          height *= maxSize / width;
+          width = maxSize;
+        } else if (height > maxSize) {
+          width *= maxSize / height;
+          height = maxSize;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = reject;
+    };
+    reader.onerror = reject;
+  });
+};
+
 interface WAContact {
   profile: { name: string };
   wa_id: string;
@@ -410,7 +439,7 @@ export default function App() {
     const messageToSend = inputText;
     const isImageMode = !!selectedImage;
     const base64Image = selectedImagePreview ? selectedImagePreview.split(',')[1] : null;
-    const mimeType = selectedImage?.type;
+    const mimeType = selectedImagePreview ? selectedImagePreview.split(';')[0].split(':')[1] : null;
 
     setInputText("");
     setSelectedImage(null);
@@ -427,13 +456,13 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+      const responseText = await res.text();
       let data: any;
       try {
-        data = await res.json();
+        data = JSON.parse(responseText);
       } catch (e) {
-        const text = await res.text().catch(() => "");
-        console.error("Failed to parse response JSON", text);
-        alert(`Gagal mengirim pesan (Server Error): ` + text.substring(0, 50));
+        console.error("Failed to parse response JSON", responseText);
+        alert(`Gagal mengirim pesan (Server Error): ` + responseText.substring(0, 100));
         return;
       }
       if (!res.ok) {
@@ -774,15 +803,17 @@ export default function App() {
                   type="file" 
                   accept="image/*" 
                   ref={fileInputRef} 
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      setSelectedImage(file);
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setSelectedImagePreview(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
+                      try {
+                        const compressedBase64 = await resizeImage(file);
+                        setSelectedImagePreview(compressedBase64);
+                        setSelectedImage(file);
+                      } catch (err) {
+                        console.error("Failed to resize image", err);
+                        alert("Gagal memproses gambar.");
+                      }
                     }
                   }}
                   className="hidden" 
