@@ -93,25 +93,42 @@ async function startServer() {
 
   // Send Image
   app.post("/api/send_image", async (req, res) => {
+    console.log("Receive /send_image request body size:", JSON.stringify(req.body).length);
+    const { to, base64Image, mimeType, caption, token, phoneId } = req.body;
+    try {
+      if (!base64Image) {
+        throw new Error("Base64 image is empty");
+      }
+      return await sendImageImplementation(req, res);
+    } catch (err: any) {
+      console.error("Outer try/catch err:", err.message);
+      res.status(500).json({ error: { message: err.message } });
+    }
+  });
+
+  async function sendImageImplementation(req: any, res: any) {
     const { to, base64Image, mimeType, caption, token, phoneId } = req.body;
     try {
       // 1. Upload to /media
       const buffer = Buffer.from(base64Image, 'base64');
       const blob = new Blob([buffer], { type: mimeType });
       const formData = new FormData();
-      formData.append('file', blob, 'image');
+      formData.append('file', blob, `image.${mimeType.split('/')[1] || 'jpg'}`);
       formData.append('messaging_product', 'whatsapp');
 
+      console.log("Uploading media...");
       const uploadRes = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/media`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` },
         body: formData
       });
       const uploadData: any = await uploadRes.json();
+      console.log("Upload media res:", uploadRes.ok, uploadData);
       if (!uploadRes.ok) return res.status(uploadRes.status).json(uploadData);
       const mediaId = uploadData.id;
 
       // 2. Send message
+      console.log("Sending message with mediaId:", mediaId);
       const sendRes = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
@@ -126,11 +143,13 @@ async function startServer() {
         })
       });
       const sendData = await sendRes.json();
+      console.log("Send res:", sendRes.ok, sendData);
       res.status(sendRes.status).json(sendData);
     } catch (e: any) {
+      console.error("Inner try/catch err:", e);
       res.status(500).json({ error: { message: e.message } });
     }
-  });
+  }
 
   // React to Message
   app.post("/api/react", async (req, res) => {

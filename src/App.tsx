@@ -29,7 +29,7 @@ interface WAMessage {
   type: string;
   status?: 'sent' | 'delivered' | 'read' | 'failed' | 'pending' | string;
   text?: { body: string };
-  image?: { id: string; caption?: string; mime_type?: string };
+  image?: { id: string; caption?: string; mime_type?: string; localPreview?: string };
   video?: { id: string; caption?: string; mime_type?: string };
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
@@ -391,7 +391,7 @@ export default function App() {
       type: selectedImage ? "image" : "text",
       status: "pending",
       text: selectedImage ? undefined : { body: inputText },
-      image: selectedImage ? { id: "local", caption: inputText } : undefined
+      image: selectedImage ? { id: "local", caption: inputText, localPreview: selectedImagePreview as string } : undefined
     };
 
     setConversations(prev => {
@@ -427,7 +427,15 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      const data: any = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (e) {
+        const text = await res.text().catch(() => "");
+        console.error("Failed to parse response JSON", text);
+        alert(`Gagal mengirim pesan (Server Error): ` + text.substring(0, 50));
+        return;
+      }
       if (!res.ok) {
         console.error("Failed to send", data);
         alert(`Gagal mengirim pesan: ${data.error?.message || JSON.stringify(data)}`);
@@ -655,17 +663,17 @@ export default function App() {
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
                           <img 
-                            src={`/api/media?id=${msg.image?.id}&token=${config.accessToken}`} 
+                            src={msg.image?.localPreview ? msg.image.localPreview : `/api/media?id=${msg.image?.id}&token=${config.accessToken}`} 
                             alt={msg.image?.caption || "Gambar"} 
                             className="max-w-[240px] sm:max-w-xs rounded-xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity" 
                             loading="lazy" 
-                            onClick={() => setFullscreenImage(`/api/media?id=${msg.image?.id}&token=${config.accessToken}`)}
+                            onClick={() => msg.image?.localPreview ? setFullscreenImage(msg.image.localPreview) : setFullscreenImage(`/api/media?id=${msg.image?.id}&token=${config.accessToken}`)}
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';
                               (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                             }}
                           />
-                          <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat gambar.</div>
+                          <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100/20 rounded-lg mt-2">Gagal memuat gambar.</div>
                           {msg.image?.caption && <p className="text-sm mt-2">{globalSearchQuery ? renderHighlightedText(msg.image.caption, globalSearchQuery) : msg.image.caption}</p>}
                         </div>
                       )}
