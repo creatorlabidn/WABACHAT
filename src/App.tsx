@@ -69,54 +69,7 @@ export default function App() {
     } catch (e) {
       console.error('Failed to parse conversations from local storage', e);
     }
-    return [
-      {
-        id: "16315551234",
-        name: "Budi Santoso",
-        phone: "+62 812 3456 7890",
-        messages: [
-          {
-            from: "16315551234",
-            id: "msg1",
-            timestamp: (Date.now() / 1000 - 300).toString(),
-            type: "text",
-            text: { body: "Halo, apakah pesanan saya sudah dikirim? Terima kasih" }
-          },
-          {
-            from: "me",
-            id: "msg2",
-            timestamp: (Date.now() / 1000 - 120).toString(),
-            type: "text",
-            status: "read",
-            text: { body: "Halo Pak Budi, pesanan #8829 sedang diproses oleh tim gudang kami dan akan dikirim sore ini." }
-          },
-          {
-            from: "16315551234",
-            id: "msg3",
-            timestamp: (Date.now() / 1000 - 60).toString(),
-            type: "text",
-            text: { body: "Baik, bisa minta nomor resinya nanti kalau sudah ada?" }
-          }
-        ],
-        lastMessageTime: new Date(Date.now() - 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        labels: ["Prospek"]
-      },
-      {
-        id: "62899999999",
-        name: "Siti Aminah",
-        phone: "+62 899 9999 999",
-        messages: [
-          {
-            from: "62899999999",
-            id: "msg_siti1",
-            timestamp: (Date.now() / 1000 - 86400).toString(),
-            type: "text",
-            text: { body: "Terima kasih atas bantuannya, layanannya sangat memuaskan!" }
-          }
-        ],
-        lastMessageTime: "Kemarin"
-      }
-    ];
+    return [];
   });
   
   useEffect(() => {
