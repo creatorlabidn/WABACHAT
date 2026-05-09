@@ -34,6 +34,7 @@ interface WAMessage {
   document?: { id: string; caption?: string; filename?: string; mime_type?: string };
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
+  context?: { id: string; forwarded?: boolean };
 }
 
 interface Conversation {
@@ -130,6 +131,7 @@ export default function App() {
   const [nowMillis, setNowMillis] = useState(Date.now());
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
+  const [replyingToMessage, setReplyingToMessage] = useState<WAMessage | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState({
     phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
@@ -194,6 +196,7 @@ export default function App() {
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
+    setReplyingToMessage(null);
     
     // Clear unread count when switching chats
     setConversations(prev => prev.map(c => c.id === activeChatId ? { ...c, unreadCount: 0 } : c));
@@ -465,6 +468,9 @@ export default function App() {
       const isDocument = cachedAttachment?.type === 'application/pdf';
       const msgType = mediaId ? (isVideo ? 'video' : isDocument ? 'document' : 'image') : 'text';
 
+      const replyToMsg = replyingToMessage;
+      setReplyingToMessage(null);
+
       // Update UI optimistically after upload starts/finishes for the message
       const newMsg: WAMessage = {
         from: "me",
@@ -475,7 +481,8 @@ export default function App() {
         text: mediaId ? undefined : { body: messageToSend },
         image: mediaId && msgType === 'image' ? { id: mediaId, caption: messageToSend } : undefined,
         video: mediaId && msgType === 'video' ? { id: mediaId, caption: messageToSend } : undefined,
-        document: mediaId && msgType === 'document' ? { id: mediaId, caption: messageToSend, filename: cachedAttachment?.name } : undefined
+        document: mediaId && msgType === 'document' ? { id: mediaId, caption: messageToSend, filename: cachedAttachment?.name } : undefined,
+        context: replyToMsg ? { id: replyToMsg.id } : undefined
       };
 
       setConversations(prev => {
@@ -505,7 +512,8 @@ export default function App() {
           phoneId: config.phoneNumberId,
           type: msgType,
           mediaId: mediaId,
-          filename: cachedAttachment?.name
+          filename: cachedAttachment?.name,
+          replyToId: replyToMsg?.id
         })
       });
       const data: any = await res.json();
@@ -818,6 +826,17 @@ export default function App() {
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
                     }`}>
+                      {msg.context?.id && (() => {
+                        const repliedMsg = activeChat.messages.find(m => m.id === msg.context?.id);
+                        return (
+                          <div className={`mb-2 pl-3 py-1.5 pr-2 rounded relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:rounded-l ${isMe ? 'bg-indigo-700/30 before:bg-indigo-300 text-indigo-100' : 'bg-slate-100 before:bg-indigo-400 text-slate-600'}`}>
+                            <p className="text-xs font-semibold mb-0.5 opacity-80">{repliedMsg?.from === 'me' ? 'Anda' : activeChat.name}</p>
+                            <p className="text-xs truncate">
+                              {repliedMsg?.type === 'text' ? repliedMsg.text?.body : repliedMsg?.type === 'image' ? (repliedMsg.image?.caption || '[Gambar]') : repliedMsg?.type === 'video' ? (repliedMsg.video?.caption || '[Video]') : repliedMsg?.type === 'document' ? (repliedMsg.document?.filename || '[Dokumen]') : 'Pesan tidak ditemukan'}
+                            </p>
+                          </div>
+                        );
+                      })()}
                       {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words [word-break:break-word]">{globalSearchQuery ? renderHighlightedText(msg.text?.body || '', globalSearchQuery) : msg.text?.body}</p>}
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
@@ -888,14 +907,21 @@ export default function App() {
                       </div>
                     </div>
                     
-                    {/* Reaction button - absolute positioned beside the message */}
-                    <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? '-left-10' : '-right-10'} opacity-0 group-hover:opacity-100 transition-opacity`}>
+                    {/* Action buttons - absolute positioned beside the message */}
+                    <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? '-left-[80px]' : '-right-[80px]'} w-[76px] opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1 px-1`}>
                       <button 
-                        className="p-1.5 bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 shadow-sm"
+                        className="p-1.5 flex items-center justify-center bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 shadow-sm"
+                        title="Balas pesan"
+                        onClick={() => setReplyingToMessage(msg)}
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                      <button 
+                        className="p-1.5 flex items-center justify-center bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 shadow-sm"
+                        title="Beri reaksi"
                         onClick={() => setReactingToMessageId(reactingToMessageId === msg.id ? null : msg.id)}
                       >
-                        <User className="hidden" /> {/* Placeholder import if needed, but let's use a smile icon. Wait, lucide-react doesn't have Smile imported. We can use text emoji or add Smile. Let's use text string '😀' for now */}
-                        <span className="text-sm leading-none block px-0.5">😀</span>
+                        <span className="text-sm leading-none block px-0.5 mt-0.5">😀</span>
                       </button>
                     </div>
 
@@ -935,7 +961,24 @@ export default function App() {
               <div ref={messagesEndRef} />
             </section>
 
-            <footer className="p-4 bg-white border-t border-slate-200 flex flex-col gap-2">
+            <footer className="p-4 bg-white border-t border-slate-200 flex flex-col gap-2 relative">
+              {replyingToMessage && (
+                <div className="flex bg-slate-50 border border-slate-200 rounded-xl overflow-hidden relative">
+                  <div className="w-1 bg-indigo-500"></div>
+                  <div className="flex-1 p-3 pt-2">
+                    <p className="text-xs font-semibold text-indigo-600 mb-0.5">{replyingToMessage.from === 'me' ? 'Anda' : activeChat.name}</p>
+                    <p className="text-sm text-slate-600 line-clamp-1">
+                      {replyingToMessage.type === 'text' ? replyingToMessage.text?.body : replyingToMessage.type === 'image' ? (replyingToMessage.image?.caption || 'Foto') : replyingToMessage.type === 'video' ? (replyingToMessage.video?.caption || 'Video') : replyingToMessage.type === 'document' ? (replyingToMessage.document?.filename || 'Dokumen') : 'Pesan'}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setReplyingToMessage(null)}
+                    className="p-3 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
               {attachment && (
                 <div className="flex items-center gap-3 p-2 bg-slate-50 border border-slate-200 rounded-xl relative">
                   {attachment.type.startsWith('image/') ? (

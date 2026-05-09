@@ -1,7 +1,7 @@
 export const onRequestPost: PagesFunction = async (context) => {
   try {
     const body = await context.request.json() as any;
-    const { to, message, token, phoneId, type, mediaId, filename } = body;
+    const { to, message, token, phoneId, type, mediaId, filename, replyToId } = body;
     
     if (!to || (!message && !mediaId) || !token || !phoneId) {
       return new Response(JSON.stringify({ error: "Missing parameters" }), { status: 400 });
@@ -11,6 +11,12 @@ export const onRequestPost: PagesFunction = async (context) => {
       messaging_product: "whatsapp",
       to: to,
     };
+
+    if (replyToId) {
+      payload.context = {
+        message_id: replyToId
+      };
+    }
 
     if (type === 'image' && mediaId) {
       payload.type = "image";
