@@ -81,7 +81,19 @@ async function startServer() {
         body: formData as any
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error("Facebook API returned non-JSON:", responseText);
+        return res.status(response.status).json({ error: "Invalid response from Facebook", details: responseText });
+      }
+
+      if (!response.ok) {
+        console.error("WhatsApp Media Upload Error:", result);
+      }
+
       res.status(response.status).json(result);
     } catch (e) {
       console.error("Failed to upload media:", e);

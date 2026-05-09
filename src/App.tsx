@@ -432,7 +432,15 @@ export default function App() {
           body: formData
         });
 
-        const uploadData: any = await uploadRes.json();
+        const uploadText = await uploadRes.text();
+        let uploadData: any;
+        try {
+          uploadData = JSON.parse(uploadText);
+        } catch (e) {
+          console.error("Raw upload response:", uploadText);
+          throw new Error(`Upload response was not invalid JSON (Status: ${uploadRes.status}): ${uploadText.slice(0, 150)}`);
+        }
+
         if (!uploadRes.ok) {
           throw new Error(`Upload failed: ${uploadData.error?.message || JSON.stringify(uploadData)}`);
         }
