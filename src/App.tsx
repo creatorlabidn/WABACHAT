@@ -136,9 +136,16 @@ export default function App() {
         setShowLabelMenu(false);
       }
     }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setActiveChatId(null);
+      }
+    }
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
@@ -694,6 +701,13 @@ export default function App() {
                 </button>
                 <button className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">
                   <Video className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => setActiveChatId(null)}
+                  className="p-2 ml-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                  title="Tutup Obrolan (Esc)"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </header>
