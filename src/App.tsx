@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
   Search, Send, CheckCircle2, CircleDashed, X, Tag
@@ -153,7 +152,6 @@ export default function App() {
   const [showLabelMenu, setShowLabelMenu] = useState(false);
   const [hoveredChatId, setHoveredChatId] = useState<string | null>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [hoverPos, setHoverPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const labelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -693,14 +691,10 @@ export default function App() {
                     ));
                   }
                 }}
-                onMouseEnter={(e) => {
+                onMouseEnter={() => {
                   if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                   hoverTimeoutRef.current = setTimeout(() => {
-                    if (chat.unreadCount && chat.unreadCount > 0) {
-                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setHoverPos({ top: rect.top, left: rect.right + 8 });
-                      setHoveredChatId(chat.id);
-                    }
+                    if (chat.unreadCount && chat.unreadCount > 0) setHoveredChatId(chat.id);
                   }, 400);
                 }}
                 onMouseLeave={() => {
@@ -713,6 +707,38 @@ export default function App() {
                     : 'hover:bg-slate-50 border-transparent'
                 }`}
               >
+                {hoveredChatId === chat.id && unreadMessages.length > 0 && (
+                  <div className="absolute left-full top-0 ml-2 z-50 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-indigo-600 flex items-center justify-between">
+                      <span className="text-white text-xs font-bold">{chat.name}</span>
+                      <span className="text-indigo-200 text-[10px]">{unreadMessages.length} pesan belum dibaca</span>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                      {unreadMessages.map(msg => (
+                        <div key={msg.id} className="px-4 py-2.5">
+                          <p className="text-[10px] text-slate-400 mb-0.5">
+                            {new Date(parseInt(msg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          {msg.referral && (
+                            <div className="flex items-center gap-1 text-[10px] text-indigo-500 mb-1">
+                              📢 <span>Pesan dari iklan: <span className="font-semibold">{msg.referral.headline}</span></span>
+                            </div>
+                          )}
+                          <p className="text-sm text-slate-700 break-words">
+                            {msg.type === 'text' ? msg.text?.body
+                              : msg.type === 'image' ? `🖼️ ${msg.image?.caption || '[Gambar]'}`
+                              : msg.type === 'video' ? `🎥 ${msg.video?.caption || '[Video]'}`
+                              : msg.type === 'document' ? `📄 ${msg.document?.filename || '[Dokumen]'}`
+                              : `[${msg.type}]`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 py-2 bg-slate-50 text-center">
+                      <span className="text-[10px] text-slate-400">Klik untuk membuka chat</span>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between items-start">
                   <span className={`font-semibold truncate pr-2 ${chat.unreadCount ? 'text-slate-900 font-bold' : 'text-slate-900'}`}>{chat.name}</span>
                   <span className={`text-xs whitespace-nowrap ${isActive ? 'text-indigo-600 font-medium' : chat.unreadCount ? 'text-indigo-600 font-bold' : 'text-slate-400'}`}>
@@ -749,50 +775,6 @@ export default function App() {
             );
           })}
         </div>
-
-        {/* Portal: Hover Preview Popup */}
-        {hoveredChatId && (() => {
-          const hoveredChat = conversations.find(c => c.id === hoveredChatId);
-          if (!hoveredChat) return null;
-          const unreadMsgs = hoveredChat.messages.filter(m => m.from !== 'me' && m.status !== 'read_by_me').slice(-10);
-          if (unreadMsgs.length === 0) return null;
-          return createPortal(
-            <div
-              className="fixed z-[9999] w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden pointer-events-none"
-              style={{ top: hoverPos.top, left: hoverPos.left }}
-            >
-              <div className="px-4 py-2.5 bg-indigo-600 flex items-center justify-between">
-                <span className="text-white text-xs font-bold">{hoveredChat.name}</span>
-                <span className="text-indigo-200 text-[10px]">{unreadMsgs.length} pesan belum dibaca</span>
-              </div>
-              <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
-                {unreadMsgs.map(msg => (
-                  <div key={msg.id} className="px-4 py-2.5">
-                    <p className="text-[10px] text-slate-400 mb-0.5">
-                      {new Date(parseInt(msg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    {msg.referral && (
-                      <div className="flex items-center gap-1 text-[10px] text-indigo-500 mb-1">
-                        📢 <span>Pesan dari iklan: <span className="font-semibold">{msg.referral.headline}</span></span>
-                      </div>
-                    )}
-                    <p className="text-sm text-slate-700 break-words">
-                      {msg.type === 'text' ? msg.text?.body
-                        : msg.type === 'image' ? `🖼️ ${msg.image?.caption || '[Gambar]'}`
-                        : msg.type === 'video' ? `🎥 ${msg.video?.caption || '[Video]'}`
-                        : msg.type === 'document' ? `📄 ${msg.document?.filename || '[Dokumen]'}`
-                        : `[${msg.type}]`}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <div className="px-4 py-2 bg-slate-50 text-center">
-                <span className="text-[10px] text-slate-400">Klik untuk membuka chat</span>
-              </div>
-            </div>,
-            document.body
-          );
-        })()}
       </nav>
 
       {/* Chat View */}
