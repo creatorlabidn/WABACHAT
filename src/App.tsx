@@ -35,6 +35,17 @@ interface WAMessage {
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
   context?: { id: string; forwarded?: boolean };
+  referral?: {
+    source_url?: string;
+    source_type?: string;
+    source_id?: string;
+    headline?: string;
+    body?: string;
+    media_type?: string;
+    image_url?: string;
+    video_url?: string;
+    ctwa_clid?: string;
+  };
 }
 
 interface Conversation {
@@ -842,6 +853,39 @@ export default function App() {
                           </div>
                         );
                       })()}
+                      {msg.referral && (
+                        <a
+                          href={msg.referral.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`block mb-2 rounded-lg overflow-hidden border ${isMe ? 'border-indigo-400/40' : 'border-slate-200'} hover:opacity-90 transition-opacity`}
+                        >
+                          {msg.referral.image_url && (
+                            <img
+                              src={msg.referral.image_url}
+                              alt={msg.referral.headline || 'Iklan'}
+                              className="w-full max-h-40 object-cover"
+                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          )}
+                          <div className={`px-3 py-2 ${isMe ? 'bg-indigo-700/30' : 'bg-slate-100'}`}>
+                            <div className={`flex items-center gap-1 text-[10px] mb-1 ${isMe ? 'text-indigo-300' : 'text-slate-400'}`}>
+                              📢 Kirim pesan melalui iklan
+                            </div>
+                            {msg.referral.headline && (
+                              <p className={`text-xs font-semibold leading-tight ${isMe ? 'text-indigo-100' : 'text-slate-700'}`}>{msg.referral.headline}</p>
+                            )}
+                            {msg.referral.body && (
+                              <p className={`text-[11px] mt-0.5 line-clamp-2 ${isMe ? 'text-indigo-200' : 'text-slate-500'}`}>{msg.referral.body}</p>
+                            )}
+                            {msg.referral.source_url && (
+                              <p className={`text-[10px] mt-1 truncate ${isMe ? 'text-indigo-300' : 'text-slate-400'}`}>
+                                🔗 {msg.referral.source_url}
+                              </p>
+                            )}
+                          </div>
+                        </a>
+                      )}
                       {msg.type === 'text' && <p className="text-sm whitespace-pre-wrap break-words [word-break:break-word]">{globalSearchQuery ? renderHighlightedText(msg.text?.body || '', globalSearchQuery) : msg.text?.body}</p>}
                       {msg.type === 'image' && (
                         <div className="flex flex-col">
