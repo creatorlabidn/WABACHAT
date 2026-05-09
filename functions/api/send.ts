@@ -1,7 +1,7 @@
 export const onRequestPost: PagesFunction = async (context) => {
   try {
     const body = await context.request.json() as any;
-    const { to, message, token, phoneId, type, mediaId } = body;
+    const { to, message, token, phoneId, type, mediaId, filename } = body;
     
     if (!to || (!message && !mediaId) || !token || !phoneId) {
       return new Response(JSON.stringify({ error: "Missing parameters" }), { status: 400 });
@@ -17,6 +17,19 @@ export const onRequestPost: PagesFunction = async (context) => {
       payload.image = {
         id: mediaId,
         caption: message || ""
+      };
+    } else if (type === 'video' && mediaId) {
+      payload.type = "video";
+      payload.video = {
+        id: mediaId,
+        caption: message || ""
+      };
+    } else if (type === 'document' && mediaId) {
+      payload.type = "document";
+      payload.document = {
+        id: mediaId,
+        caption: message || "",
+        filename: filename || "document.pdf"
       };
     } else {
       payload.type = "text";

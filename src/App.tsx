@@ -31,6 +31,7 @@ interface WAMessage {
   text?: { body: string };
   image?: { id: string; caption?: string; mime_type?: string };
   video?: { id: string; caption?: string; mime_type?: string };
+  document?: { id: string; caption?: string; filename?: string; mime_type?: string };
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
 }
@@ -454,15 +455,21 @@ export default function App() {
       const messageToSend = inputText;
       const cachedAttachment = attachment;
       
+      const isVideo = cachedAttachment?.type.startsWith('video/');
+      const isDocument = cachedAttachment?.type === 'application/pdf';
+      const msgType = mediaId ? (isVideo ? 'video' : isDocument ? 'document' : 'image') : 'text';
+
       // Update UI optimistically after upload starts/finishes for the message
       const newMsg: WAMessage = {
         from: "me",
         id: `local_${Date.now()}`,
         timestamp: Math.floor(Date.now() / 1000).toString(),
-        type: mediaId ? "image" : "text",
+        type: msgType as any,
         status: "pending",
         text: mediaId ? undefined : { body: messageToSend },
-        image: mediaId ? { id: mediaId, caption: messageToSend } : undefined
+        image: mediaId && msgType === 'image' ? { id: mediaId, caption: messageToSend } : undefined,
+        video: mediaId && msgType === 'video' ? { id: mediaId, caption: messageToSend } : undefined,
+        document: mediaId && msgType === 'document' ? { id: mediaId, caption: messageToSend, filename: cachedAttachment?.name } : undefined
       };
 
       setConversations(prev => {
@@ -490,8 +497,9 @@ export default function App() {
           message: messageToSend,
           token: config.accessToken,
           phoneId: config.phoneNumberId,
-          type: mediaId ? "image" : "text",
-          mediaId: mediaId
+          type: msgType,
+          mediaId: mediaId,
+          filename: cachedAttachment?.name
         })
       });
       const data: any = await res.json();
@@ -649,7 +657,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between items-center mt-1">
                   <p className={`text-sm truncate flex-1 pr-2 ${chat.unreadCount ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
-                    {lastMsg?.type === 'text' ? lastMsg.text?.body : lastMsg?.type === 'image' ? (lastMsg.image?.caption || '[Gambar]') : lastMsg?.type === 'video' ? (lastMsg.video?.caption || '[Video]') : lastMsg?.type === 'unsupported' ? '' : `[${lastMsg?.type}]`}
+                    {lastMsg?.type === 'text' ? lastMsg.text?.body : lastMsg?.type === 'image' ? (lastMsg.image?.caption || '[Gambar]') : lastMsg?.type === 'video' ? (lastMsg.video?.caption || '[Video]') : lastMsg?.type === 'document' ? (lastMsg.document?.caption || lastMsg.document?.filename || '[Dokumen]') : lastMsg?.type === 'unsupported' ? '' : `[${lastMsg?.type}]`}
                   </p>
                   {!!chat.unreadCount && chat.unreadCount > 0 && (
                     <span className="shrink-0 flex items-center justify-center w-5 h-5 bg-indigo-600 text-white rounded-full text-[10px] font-bold">
@@ -816,7 +824,26 @@ export default function App() {
                           {msg.video?.caption && <p className="text-sm mt-2">{globalSearchQuery ? renderHighlightedText(msg.video.caption, globalSearchQuery) : msg.video.caption}</p>}
                         </div>
                       )}
-                      {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'unsupported' && (
+                      {msg.type === 'document' && (
+                        <div className="flex flex-col">
+                          <a 
+                            href={`/api/media?id=${msg.document?.id}&token=${config.accessToken}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 p-3 bg-slate-100/50 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200/50"
+                          >
+                            <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center shrink-0">
+                              <Paperclip className="w-5 h-5" />
+                            </div>
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="text-sm font-medium text-slate-700 truncate">{msg.document?.filename || 'Dokumen'}</span>
+                              <span className="text-xs text-slate-500 uppercase">PDF • {msg.document?.caption || 'lampiran'}</span>
+                            </div>
+                          </a>
+                          {msg.document?.caption && <p className="text-sm mt-2">{globalSearchQuery ? renderHighlightedText(msg.document.caption, globalSearchQuery) : msg.document.caption}</p>}
+                        </div>
+                      )}
+                      {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'document' && msg.type !== 'unsupported' && (
                         <p className="text-sm italic opacity-80">[Pesan tipe {msg.type} belum didukung]</p>
                       )}
                       
