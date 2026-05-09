@@ -113,8 +113,8 @@ export default function App() {
     }
   }, []);
   
-  const [activeChatId, setActiveChatId] = useState<string>("16315551234");
-  const activeChatIdRef = useRef<string>("16315551234");
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
@@ -126,7 +126,7 @@ export default function App() {
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const activeChat = conversations.find(c => c.id === activeChatId) || conversations[0];
+  const activeChat = activeChatId ? conversations.find(c => c.id === activeChatId) : null;
 
   const scrollToBottom = (instant = false) => {
     messagesEndRef.current?.scrollIntoView({ behavior: instant ? "auto" : "smooth" });
