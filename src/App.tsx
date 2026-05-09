@@ -205,6 +205,9 @@ export default function App() {
   // Mark all unread incoming messages as read
   const conversationsRef = useRef(conversations);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+
+  const configRef = useRef(config);
+  useEffect(() => { configRef.current = config; }, [config]);
   
   useEffect(() => {
     if (!activeChat) return;
@@ -247,7 +250,9 @@ export default function App() {
 
     const fetchWebhooks = async () => {
       try {
-        const res = await fetch(`/api/webhooks?t=${Date.now()}`, {
+        const phoneId = configRef.current.phoneNumberId;
+        const phoneIdParam = phoneId ? `&phoneId=${encodeURIComponent(phoneId)}` : '';
+        const res = await fetch(`/api/webhooks?t=${Date.now()}${phoneIdParam}`, {
           headers: {
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache'
