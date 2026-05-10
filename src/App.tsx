@@ -368,11 +368,11 @@ export default function App() {
                   return prev.map(chat => {
                     const hasMessage = chat.messages.some(m => m.id === statusUpdate.id);
                     if (hasMessage) {
-                      return {
+                      const updatedChat = {
                         ...chat,
                         messages: chat.messages.map(m => {
                           if (m.id === statusUpdate.id) {
-                            const weights: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, failed: -1 };
+                            const weights: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, read_by_me: 4, failed: -1 };
                             const currentW = weights[m.status || 'pending'] ?? 0;
                             const newW = weights[statusUpdate.status] ?? 0;
                             if (newW > currentW) {
@@ -382,6 +382,11 @@ export default function App() {
                           return m;
                         })
                       };
+                      // Automatically set unreadCount to 0 if a message in this chat is marked read_by_me
+                      if (statusUpdate.status === 'read_by_me') {
+                        updatedChat.unreadCount = 0;
+                      }
+                      return updatedChat;
                     }
                     return chat;
                   });
@@ -467,7 +472,9 @@ export default function App() {
                     messages: [...existingChat.messages, newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     // Pesan keluar tidak menambah unread count
-                    unreadCount: isOutgoing ? (existingChat.unreadCount || 0) : isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
+                    // Pesan masuk (termasuk saat initial load) akan menambah unread count
+                    // Nanti akan direset menjadi 0 jika ada webhook read_by_me
+                    unreadCount: isOutgoing ? (existingChat.unreadCount || 0) : isCurrentlyActive ? 0 : (existingChat.unreadCount || 0) + 1
                   };
                   return [updatedChat, ...prev.filter(c => c.id !== phone)];
                 } else {
@@ -477,7 +484,7 @@ export default function App() {
                     phone: `+${phone}`,
                     messages: [newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    unreadCount: isOutgoing || isCurrentlyActive || isInitial ? 0 : 1
+                    unreadCount: isOutgoing || isCurrentlyActive ? 0 : 1
                   };
                   return [newChat, ...prev];
                 }
