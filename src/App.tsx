@@ -271,7 +271,7 @@ export default function App() {
       }
     )
       .then(async r => {
-        const data = await r.json();
+        const data: any = await r.json();
         if (!r.ok) {
           console.error("Sheets API Error:", data);
           setCustomerProfile({ found: false, name: `Error: ${data.error}` });
@@ -279,9 +279,9 @@ export default function App() {
         }
         setCustomerProfile(data);
       })
-      .catch((err) => {
+      .catch((err: any) => {
         console.error(err);
-        setCustomerProfile({ found: false, name: `Catch Error: ${err.message}` });
+        setCustomerProfile({ found: false, name: `Catch Error: ${err.message || String(err)}` });
       })
       .finally(() => setIsLoadingProfile(false));
   };

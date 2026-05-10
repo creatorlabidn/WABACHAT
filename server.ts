@@ -222,11 +222,11 @@ async function startServer() {
   // ============================================================
   // GOOGLE SHEETS — Ambil data customer berdasarkan nomor WA
   // ============================================================
-  app.post("/api/sheets/customer", async (req, res) => {
+  app.all("/api/sheets/customer", async (req, res) => {
     try {
-      const phone = (req.body.phone as string || "").replace(/\D/g, "");
-      const spreadsheetId = req.body.spreadsheetId as string;
-      const serviceAccountRaw = req.body.serviceAccount as string;
+      const phone = ((req.method === "POST" ? req.body.phone : req.query.phone) as string || "").replace(/\D/g, "");
+      const spreadsheetId = (req.method === "POST" ? req.body.spreadsheetId : req.query.spreadsheetId) as string;
+      const serviceAccountRaw = (req.method === "POST" ? req.body.serviceAccount : req.query.serviceAccount) as string;
 
       if (!phone || !spreadsheetId || !serviceAccountRaw) {
         return res.status(400).json({ error: "Missing parameters" });
