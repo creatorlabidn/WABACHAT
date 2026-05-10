@@ -135,6 +135,7 @@ export default function App() {
   const [editingQuickReply, setEditingQuickReply] = useState<QuickReply | null>(null);
   const [qrForm, setQrForm] = useState({ title: '', message: '' });
   const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
+  const [orderHistories, setOrderHistories] = useState<Record<string, any>>({});
   const quickReplyPanelRef = useRef<HTMLDivElement>(null);
 
   const handleRefreshProfile = async () => {
@@ -145,12 +146,15 @@ export default function App() {
         phone: activeChat.id,
         name: activeChat.name
       };
-      await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook-test/f157c575-2739-4573-86ce-624d784ee088', {
+      const response = await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook-test/f157c575-2739-4573-86ce-624d784ee088', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      // Optionally could show a toast here
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        setOrderHistories(prev => ({ ...prev, [activeChat.id]: data[0] }));
+      }
     } catch (error) {
       console.error('Failed to refresh profile:', error);
     } finally {
@@ -1353,14 +1357,21 @@ export default function App() {
             <div>
               <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Riwayat Pesanan</h4>
               <div className="space-y-3">
-                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                  <p className="text-xs font-bold text-slate-800">Order #8829</p>
-                  <p className="text-[10px] text-slate-500">Pending • Rp 450.000</p>
-                </div>
-                <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                  <p className="text-xs font-bold text-slate-800">Order #8712</p>
-                  <p className="text-[10px] text-slate-500">Selesai • Rp 1.200.000</p>
-                </div>
+                {orderHistories[activeChat.id] && orderHistories[activeChat.id].orders && orderHistories[activeChat.id].orders.length > 0 ? (
+                  orderHistories[activeChat.id].orders.map((order: any) => (
+                    <div key={order.order_id} className="p-2 bg-slate-50 rounded border border-slate-100">
+                      <p className="text-xs font-bold text-slate-800">Order #{order.order_id}</p>
+                      <p className="text-[11px] font-medium text-slate-700 mt-1 line-clamp-1" title={order.product}>{order.product}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{order.tanggal} • Rp {parseFloat(order.revenue).toLocaleString('id-ID')}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 bg-slate-50 rounded border border-slate-100 text-center">
+                    <p className="text-xs text-slate-500">
+                      {orderHistories[activeChat.id] ? "Tidak ada pesanan." : "Belum ada data. Silakan klik Refresh."}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
