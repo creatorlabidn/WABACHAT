@@ -138,15 +138,18 @@ export default function App() {
   const [orderHistories, setOrderHistories] = useState<Record<string, any>>({});
   const quickReplyPanelRef = useRef<HTMLDivElement>(null);
 
-  const handleRefreshProfile = async () => {
-    if (!activeChat) return;
+  const handleRefreshProfile = async (targetId?: string, targetName?: string) => {
+    const idToRefresh = targetId || activeChat?.id;
+    const nameToRefresh = targetName || activeChat?.name;
+    if (!idToRefresh) return;
+    
     setIsRefreshingProfile(true);
     try {
       const payload = {
-        phone: activeChat.id,
-        name: activeChat.name
+        phone: idToRefresh,
+        name: nameToRefresh
       };
-      const response = await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook-test/f157c575-2739-4573-86ce-624d784ee088', {
+      const response = await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook/f157c575-2739-4573-86ce-624d784ee088', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -166,7 +169,7 @@ export default function App() {
 
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
-        setOrderHistories(prev => ({ ...prev, [activeChat.id]: orderData }));
+        setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
       }
     } catch (error) {
       console.error('Failed to refresh profile:', error);
@@ -174,6 +177,15 @@ export default function App() {
       setIsRefreshingProfile(false);
     }
   };
+
+  useEffect(() => {
+    if (activeChatId) {
+      const currentChat = conversationsRef.current?.find(c => c.id === activeChatId) || conversations.find(c => c.id === activeChatId);
+      if (currentChat) {
+        handleRefreshProfile(currentChat.id, currentChat.name);
+      }
+    }
+  }, [activeChatId]);
 
   useEffect(() => {
     localStorage.setItem('wa_quick_replies', JSON.stringify(quickReplies));
