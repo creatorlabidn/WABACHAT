@@ -340,7 +340,6 @@ export default function App() {
         });
         if (!res.ok) return;
         const webhooks: any[] = await res.json();
-        const isInitialFetch = isInitialFetchRef.current;
         
         webhooks.forEach((payload: any) => {
           if (payload.error) {
@@ -368,11 +367,11 @@ export default function App() {
                   return prev.map(chat => {
                     const hasMessage = chat.messages.some(m => m.id === statusUpdate.id);
                     if (hasMessage) {
-                      const updatedChat = {
+                      return {
                         ...chat,
                         messages: chat.messages.map(m => {
                           if (m.id === statusUpdate.id) {
-                            const weights: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, read_by_me: 4, failed: -1 };
+                            const weights: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, failed: -1 };
                             const currentW = weights[m.status || 'pending'] ?? 0;
                             const newW = weights[statusUpdate.status] ?? 0;
                             if (newW > currentW) {
@@ -382,11 +381,6 @@ export default function App() {
                           return m;
                         })
                       };
-                      // Automatically set unreadCount to 0 if a message in this chat is marked read_by_me
-                      if (statusUpdate.status === 'read_by_me') {
-                        updatedChat.unreadCount = 0;
-                      }
-                      return updatedChat;
                     }
                     return chat;
                   });
@@ -413,7 +407,7 @@ export default function App() {
               const phone = isOutgoing ? payload._to : newMsg.from;
               const defaultName = contact ? contact.profile.name : `+${phone}`;
 
-              if (!isOutgoing && !isInitialFetch && Notification.permission === "granted") {
+              if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
                 if (!isCurrentlyActive || document.hidden) {
                   const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : newMsg.type === 'audio' ? (newMsg.audio?.voice ? '[Pesan Suara]' : '[Audio]') : `[${newMsg.type}]`;
@@ -464,7 +458,7 @@ export default function App() {
                 }
 
                 const isCurrentlyActive = phone === activeChatIdRef.current;
-                const isInitial = isInitialFetch;
+                const isInitial = isInitialFetchRef.current;
 
                 if (existingChat) {
                   const updatedChat = {
@@ -472,9 +466,7 @@ export default function App() {
                     messages: [...existingChat.messages, newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     // Pesan keluar tidak menambah unread count
-                    // Pesan masuk (termasuk saat initial load) akan menambah unread count
-                    // Nanti akan direset menjadi 0 jika ada webhook read_by_me
-                    unreadCount: isOutgoing ? (existingChat.unreadCount || 0) : isCurrentlyActive ? 0 : (existingChat.unreadCount || 0) + 1
+                    unreadCount: isOutgoing ? (existingChat.unreadCount || 0) : isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
                   };
                   return [updatedChat, ...prev.filter(c => c.id !== phone)];
                 } else {
@@ -484,7 +476,7 @@ export default function App() {
                     phone: `+${phone}`,
                     messages: [newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    unreadCount: isOutgoing || isCurrentlyActive ? 0 : 1
+                    unreadCount: isOutgoing || isCurrentlyActive || isInitial ? 0 : 1
                   };
                   return [newChat, ...prev];
                 }

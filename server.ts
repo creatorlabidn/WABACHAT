@@ -99,59 +99,6 @@ async function startServer() {
     }
   });
 
-  // READ STATUS ENDPOINT
-  app.post("/api/read", async (req, res) => {
-    try {
-      const { messageId, phoneId, token } = req.body;
-      
-      const response = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          status: "read",
-          message_id: messageId
-        })
-      });
-      
-      const result: any = await response.json();
-
-      // Inject a webhook log so other clients know it was read by us
-      const readWebhookEntry = {
-        object: "whatsapp_business_account",
-        entry: [{
-          changes: [{
-            value: {
-              messaging_product: "whatsapp",
-              metadata: { phone_number_id: phoneId },
-              statuses: [{
-                id: messageId,
-                status: "read_by_me",
-                timestamp: Math.floor(Date.now() / 1000).toString(),
-                recipient_id: "me"
-              }]
-            },
-            field: "messages"
-          }]
-        }]
-      };
-      webhooks.push(readWebhookEntry);
-      
-      // Notify other clients to clear unread locally
-      clients.forEach(client => {
-        client.write(`data: ${JSON.stringify({ type: 'local_read', messageId })}\n\n`);
-      });
-
-      res.status(response.status).json(result);
-    } catch (e) {
-      console.error("Failed to mark as read:", e);
-      res.status(500).json({ error: String(e) });
-    }
-  });
-
   // UPLOAD MEDIA ENDPOINT
   app.post("/api/upload-media", upload.single("file"), async (req, res) => {
     try {
@@ -222,9 +169,7 @@ async function startServer() {
   app.get("/api/webhooks", (req, res) => {
     const getTimestamp = (payload: any): number => {
       try {
-        const tsMsg = payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.timestamp;
-        const tsSts = payload?.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]?.timestamp;
-        const ts = tsMsg || tsSts;
+        const ts = payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.timestamp;
         return ts ? parseInt(ts) : 0;
       } catch { return 0; }
     };
