@@ -340,6 +340,7 @@ export default function App() {
         });
         if (!res.ok) return;
         const webhooks: any[] = await res.json();
+        const isInitialFetch = isInitialFetchRef.current;
         
         webhooks.forEach((payload: any) => {
           if (payload.error) {
@@ -407,7 +408,7 @@ export default function App() {
               const phone = isOutgoing ? payload._to : newMsg.from;
               const defaultName = contact ? contact.profile.name : `+${phone}`;
 
-              if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
+              if (!isOutgoing && !isInitialFetch && Notification.permission === "granted") {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
                 if (!isCurrentlyActive || document.hidden) {
                   const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : newMsg.type === 'audio' ? (newMsg.audio?.voice ? '[Pesan Suara]' : '[Audio]') : `[${newMsg.type}]`;
@@ -458,7 +459,7 @@ export default function App() {
                 }
 
                 const isCurrentlyActive = phone === activeChatIdRef.current;
-                const isInitial = isInitialFetchRef.current;
+                const isInitial = isInitialFetch;
 
                 if (existingChat) {
                   const updatedChat = {
