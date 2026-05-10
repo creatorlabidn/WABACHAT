@@ -259,7 +259,16 @@ export default function App() {
     setCustomerProfile(null);
 
     fetch(
-      `/api/sheets/customer?phone=${encodeURIComponent(phone)}&spreadsheetId=${encodeURIComponent(config.spreadsheetId)}&serviceAccount=${encodeURIComponent(config.serviceAccount)}`
+      `/api/sheets/customer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          spreadsheetId: config.spreadsheetId,
+          serviceAccount: config.serviceAccount
+        })
+      }
     )
       .then(async r => {
         const data = await r.json();
