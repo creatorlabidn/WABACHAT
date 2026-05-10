@@ -33,6 +33,7 @@ interface WAMessage {
   image?: { id: string; caption?: string; mime_type?: string };
   video?: { id: string; caption?: string; mime_type?: string };
   document?: { id: string; caption?: string; filename?: string; mime_type?: string };
+  audio?: { id: string; mime_type?: string; voice?: boolean };
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
   context?: { id: string; forwarded?: boolean };
@@ -304,7 +305,7 @@ export default function App() {
               if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
                 if (!isCurrentlyActive || document.hidden) {
-                  const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : `[${newMsg.type}]`;
+                  const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : newMsg.type === 'audio' ? (newMsg.audio?.voice ? '[Pesan Suara]' : '[Audio]') : `[${newMsg.type}]`;
                   const notification = new Notification(`Pesan baru dari ${defaultName}`, {
                     body: body,
                   });
@@ -701,7 +702,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between items-center mt-1">
                   <p className={`text-sm truncate flex-1 pr-2 ${chat.unreadCount ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
-                    {lastMsg?.type === 'text' ? lastMsg.text?.body : lastMsg?.type === 'image' ? (lastMsg.image?.caption || '[Gambar]') : lastMsg?.type === 'video' ? (lastMsg.video?.caption || '[Video]') : lastMsg?.type === 'document' ? (lastMsg.document?.caption || lastMsg.document?.filename || '[Dokumen]') : lastMsg?.type === 'unsupported' ? '' : `[${lastMsg?.type}]`}
+                    {lastMsg?.type === 'text' ? lastMsg.text?.body : lastMsg?.type === 'image' ? (lastMsg.image?.caption || '[Gambar]') : lastMsg?.type === 'video' ? (lastMsg.video?.caption || '[Video]') : lastMsg?.type === 'document' ? (lastMsg.document?.caption || lastMsg.document?.filename || '[Dokumen]') : lastMsg?.type === 'audio' ? (lastMsg.audio?.voice ? '🎤 [Pesan Suara]' : '🎵 [Audio]') : lastMsg?.type === 'unsupported' ? '' : `[${lastMsg?.type}]`}
                   </p>
                   {!!chat.unreadCount && chat.unreadCount > 0 && (
                     <span className="shrink-0 flex items-center justify-center w-5 h-5 bg-indigo-600 text-white rounded-full text-[10px] font-bold">
@@ -767,6 +768,7 @@ export default function App() {
                         : msg.type === 'image' ? `🖼️ ${msg.image?.caption || '[Gambar]'}`
                         : msg.type === 'video' ? `🎥 ${msg.video?.caption || '[Video]'}`
                         : msg.type === 'document' ? `📄 ${msg.document?.filename || '[Dokumen]'}`
+                        : msg.type === 'audio' ? (msg.audio?.voice ? '🎤 [Pesan Suara]' : '🎵 [Audio]')
                         : `[${msg.type}]`}
                     </p>
                   </div>
@@ -987,7 +989,27 @@ export default function App() {
                           {msg.document?.caption && <p className="text-sm mt-2">{globalSearchQuery ? renderHighlightedText(msg.document.caption, globalSearchQuery) : msg.document.caption}</p>}
                         </div>
                       )}
-                      {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'document' && msg.type !== 'unsupported' && (
+                      {msg.type === 'audio' && (
+                        <div className="flex flex-col min-w-[200px]">
+                          <div className={`flex items-center gap-2 mb-2 text-xs font-semibold ${isMe ? 'text-indigo-200' : 'text-slate-500'}`}>
+                            <span>{msg.audio?.voice ? '🎤 Pesan Suara' : '🎵 Audio'}</span>
+                          </div>
+                          <audio
+                            controls
+                            className="w-full max-w-[280px] rounded-lg"
+                            style={{ height: '36px' }}
+                            onError={(e) => {
+                              (e.target as HTMLAudioElement).style.display = 'none';
+                              (e.target as HTMLAudioElement).nextElementSibling?.classList.remove('hidden');
+                            }}
+                          >
+                            <source src={`/api/media?id=${msg.audio?.id}&token=${config.accessToken}`} />
+                            Browser Anda tidak mendukung audio.
+                          </audio>
+                          <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat audio.</div>
+                        </div>
+                      )}
+                      {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'document' && msg.type !== 'audio' && msg.type !== 'unsupported' && (
                         <p className="text-sm italic opacity-80">[Pesan tipe {msg.type} belum didukung]</p>
                       )}
                       
