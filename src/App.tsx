@@ -70,6 +70,7 @@ interface Conversation {
 interface CustomerOrder {
   orderId: string;
   product: string;
+  date?: string;
   total: string;
 }
 
@@ -260,9 +261,19 @@ export default function App() {
     fetch(
       `/api/sheets/customer?phone=${encodeURIComponent(phone)}&spreadsheetId=${encodeURIComponent(config.spreadsheetId)}&serviceAccount=${encodeURIComponent(config.serviceAccount)}`
     )
-      .then(r => r.json())
-      .then(data => setCustomerProfile(data))
-      .catch(() => setCustomerProfile({ found: false }))
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) {
+          console.error("Sheets API Error:", data);
+          setCustomerProfile({ found: false, name: `Error: ${data.error}` });
+          return;
+        }
+        setCustomerProfile(data);
+      })
+      .catch((err) => {
+        console.error(err);
+        setCustomerProfile({ found: false, name: `Catch Error: ${err.message}` });
+      })
       .finally(() => setIsLoadingProfile(false));
   };
 
@@ -1376,14 +1387,18 @@ export default function App() {
             </div>
           )}
 
-          {/* Tidak ditemukan */}
+          {/* Tidak ditemukan atau Error */}
           {!isLoadingProfile && config.spreadsheetId && config.serviceAccount && customerProfile && !customerProfile.found && (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 px-5 py-8 text-center">
               <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
                 <User className="w-6 h-6 text-slate-400" />
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Tidak ada data pesanan untuk nomor <span className="font-mono font-semibold text-slate-700">{activeChat.phone}</span>
+                {customerProfile.name ? (
+                  <span className="text-rose-500 font-semibold">{customerProfile.name}</span>
+                ) : (
+                  <>Tidak ada data pesanan untuk nomor <span className="font-mono font-semibold text-slate-700">{activeChat.phone}</span></>
+                )}
               </p>
             </div>
           )}
@@ -1431,6 +1446,11 @@ export default function App() {
                         <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
                           {order.orderId}
                         </span>
+                        {order.date && order.date !== '-' && (
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            {order.date}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-700 leading-snug">{order.product}</p>
                       <p className="text-xs font-bold text-emerald-600">{order.total}</p>

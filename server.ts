@@ -282,9 +282,9 @@ async function startServer() {
         return res.status(401).json({ error: "Gagal mendapatkan access token Google", detail: tokenData });
       }
 
-      // Ambil data dari Google Sheets (kolom A–F, max 1000 baris, mulai baris 2)
+      // Ambil data dari Google Sheets (kolom A–G, max 1000 baris, mulai baris 2)
       const sheetName = encodeURIComponent("Resep Kalkulator");
-      const range = `${sheetName}!A2:F1000`;
+      const range = `${sheetName}!A2:G1000`;
       const sheetsRes = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
         { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
@@ -304,6 +304,9 @@ async function startServer() {
       const normalizePhone = (p: string) => p.replace(/\D/g, "");
       const matched = rows.filter((row) => {
         const rowPhone = normalizePhone(row[2] || "");
+        
+        if (!rowPhone || rowPhone.length < 8) return false;
+
         // Cocokkan jika sama persis, atau salah satu adalah suffix dari yang lain
         return (
           rowPhone === phone ||
@@ -320,7 +323,8 @@ async function startServer() {
       const orders = matched.map((row) => ({
         orderId: row[3] || "-",
         product: row[4] || "-",
-        total: row[5] || "-",
+        date: row[5] || "-",
+        total: row[6] || "-",
       }));
 
       return res.json({
