@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
-  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2
+  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2, RefreshCw
 } from 'lucide-react';
 
 const renderHighlightedText = (text: string, highlight: string) => {
@@ -134,7 +134,29 @@ export default function App() {
   const [isQuickReplySettingsOpen, setIsQuickReplySettingsOpen] = useState(false);
   const [editingQuickReply, setEditingQuickReply] = useState<QuickReply | null>(null);
   const [qrForm, setQrForm] = useState({ title: '', message: '' });
+  const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const quickReplyPanelRef = useRef<HTMLDivElement>(null);
+
+  const handleRefreshProfile = async () => {
+    if (!activeChat) return;
+    setIsRefreshingProfile(true);
+    try {
+      const payload = {
+        phone: activeChat.id,
+        name: activeChat.name
+      };
+      await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook-test/f157c575-2739-4573-86ce-624d784ee088', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      // Optionally could show a toast here
+    } catch (error) {
+      console.error('Failed to refresh profile:', error);
+    } finally {
+      setIsRefreshingProfile(false);
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('wa_quick_replies', JSON.stringify(quickReplies));
@@ -1343,8 +1365,13 @@ export default function App() {
             </div>
 
             <div className="mt-auto pt-4">
-              <button className="w-full border border-slate-200 text-slate-600 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors">
-                Lihat Profil Lengkap
+              <button 
+                onClick={handleRefreshProfile}
+                disabled={isRefreshingProfile}
+                className="w-full flex items-center justify-center gap-2 border border-slate-200 text-slate-600 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRefreshingProfile ? <CircleDashed className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                {isRefreshingProfile ? 'Memproses...' : 'Refresh'}
               </button>
             </div>
           </div>
