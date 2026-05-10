@@ -179,15 +179,12 @@ async function startServer() {
 
   // WhatsApp Webhook Verification
   app.get("/api/webhook", (req, res) => {
-    // The verify token you specify in the App Dashboard
     const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my-verify-token";
 
-    // Parse params from the webhook verification request
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
 
-    // Check if a token and mode were sent
     if (mode && token) {
       if (mode === "subscribe" && token === VERIFY_TOKEN) {
         console.log("WEBHOOK_VERIFIED");
@@ -204,17 +201,14 @@ async function startServer() {
   app.post("/api/webhook", (req, res) => {
     console.log("Received Webhook:", JSON.stringify(req.body, null, 2));
     
-    // Check if this is an event from a WhatsApp API
     if (req.body.object) {
       if (
         req.body.entry &&
         req.body.entry[0].changes &&
         req.body.entry[0].changes[0]
       ) {
-        // Simpan semua event: pesan baru DAN status updates (sent/delivered/read)
         webhooks.push(req.body);
         
-        // Notify all connected clients
         clients.forEach(client => {
           client.write(`data: ${JSON.stringify({ type: 'new_message', payload: req.body })}\n\n`);
         });
@@ -222,6 +216,123 @@ async function startServer() {
       res.sendStatus(200);
     } else {
       res.sendStatus(404);
+    }
+  });
+
+  // ============================================================
+  // GOOGLE SHEETS — Ambil data customer berdasarkan nomor WA
+  // ============================================================
+  app.get("/api/sheets/customer", async (req, res) => {
+    try {
+      const phone = (req.query.phone as string || "").replace(/\D/g, "");
+      const spreadsheetId = req.query.spreadsheetId as string;
+      const serviceAccountRaw = req.query.serviceAccount as string;
+
+      if (!phone || !spreadsheetId || !serviceAccountRaw) {
+        return res.status(400).json({ error: "Missing parameters" });
+      }
+
+      let sa: any;
+      try {
+        sa = JSON.parse(serviceAccountRaw);
+      } catch {
+        return res.status(400).json({ error: "Invalid service account JSON" });
+      }
+
+      // Buat JWT untuk Google OAuth2
+      const now = Math.floor(Date.now() / 1000);
+      const header = { alg: "RS256", typ: "JWT" };
+      const payload = {
+        iss: sa.client_email,
+        scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+        aud: "https://oauth2.googleapis.com/token",
+        exp: now + 3600,
+        iat: now,
+      };
+
+      const base64url = (obj: any) =>
+        Buffer.from(JSON.stringify(obj))
+          .toString("base64")
+          .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
+      const signingInput = `${base64url(header)}.${base64url(payload)}`;
+
+      // Sign dengan private key
+      const { createSign } = await import("crypto");
+      const sign = createSign("RSA-SHA256");
+      sign.update(signingInput);
+      const signature = sign
+        .sign(sa.private_key, "base64")
+        .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
+      const jwt = `${signingInput}.${signature}`;
+
+      // Tukar JWT dengan access token Google
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+          assertion: jwt,
+        }),
+      });
+      const tokenData: any = await tokenRes.json();
+
+      if (!tokenData.access_token) {
+        return res.status(401).json({ error: "Gagal mendapatkan access token Google", detail: tokenData });
+      }
+
+      // Ambil data dari Google Sheets (kolom A–F, max 1000 baris, mulai baris 2)
+      const sheetName = encodeURIComponent("Resep Kalkulator");
+      const range = `${sheetName}!A2:F1000`;
+      const sheetsRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
+        { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
+      );
+      const sheetsData: any = await sheetsRes.json();
+
+      if (!sheetsRes.ok) {
+        return res.status(sheetsRes.status).json({
+          error: sheetsData.error?.message || "Google Sheets error",
+        });
+      }
+
+      const rows: string[][] = sheetsData.values || [];
+
+      // Cari baris yang nomornya cocok (kolom C = index 2)
+      // Format nomor bisa: 628xxx, +628xxx, 08xxx — semua dinormalisasi
+      const normalizePhone = (p: string) => p.replace(/\D/g, "");
+      const matched = rows.filter((row) => {
+        const rowPhone = normalizePhone(row[2] || "");
+        // Cocokkan jika sama persis, atau salah satu adalah suffix dari yang lain
+        return (
+          rowPhone === phone ||
+          rowPhone.endsWith(phone.slice(-9)) ||
+          phone.endsWith(rowPhone.slice(-9))
+        );
+      });
+
+      if (matched.length === 0) {
+        return res.json({ found: false });
+      }
+
+      // Susun hasil: satu profil + semua pesanan dari nomor yang sama
+      const orders = matched.map((row) => ({
+        orderId: row[3] || "-",
+        product: row[4] || "-",
+        total: row[5] || "-",
+      }));
+
+      return res.json({
+        found: true,
+        name: matched[0][0] || "-",
+        email: matched[0][1] || "-",
+        phone: matched[0][2] || "-",
+        orders,
+      });
+    } catch (e) {
+      console.error("Sheets error:", e);
+      res.status(500).json({ error: String(e) });
     }
   });
 
