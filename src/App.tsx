@@ -1369,12 +1369,14 @@ export default function App() {
               <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Kontak Details</h4>
               <div className="space-y-2">
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
-                  <span>WA:</span> 
+                  <span>WhatsApp:</span> 
                   <span className="text-slate-500">{activeChat.phone}</span>
                 </div>
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
-                  <span>ID:</span> 
-                  <span className="text-slate-500">CUST-{activeChat.phone.slice(-4)}</span>
+                  <span>Email:</span> 
+                  <span className="text-slate-500 truncate ml-2" title={orderHistories[activeChat.id]?.orders?.[0]?.email || '-'}>
+                    {orderHistories[activeChat.id]?.orders?.[0]?.email || '-'}
+                  </span>
                 </div>
               </div>
             </div>
