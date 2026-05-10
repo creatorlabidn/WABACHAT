@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
   Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2,
-  ShoppingBag, RefreshCw, Mail
+  ShoppingBag, RefreshCw, Mail, AlertCircle
 } from 'lucide-react';
 
 const renderHighlightedText = (text: string, highlight: string) => {
@@ -68,27 +68,19 @@ interface Conversation {
 }
 
 interface CustomerOrder {
+  nama: string;
+  email: string;
+  phone: string;
   orderId: string;
-  product: string;
-  date?: string;
+  produk: string;
   total: string;
-}
-
-interface CustomerProfile {
-  found: boolean;
-  name?: string;
-  email?: string;
-  phone?: string;
-  orders?: CustomerOrder[];
 }
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
     try {
       const saved = localStorage.getItem('wa_conversations');
-      if (saved) {
-        return JSON.parse(saved);
-      }
+      if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error('Failed to parse conversations from local storage', e);
     }
@@ -124,8 +116,10 @@ export default function App() {
   const [config, setConfig] = useState({
     phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
     accessToken: localStorage.getItem('wa_access_token') || '',
-    spreadsheetId: localStorage.getItem('wa_spreadsheet_id') || '',
-    serviceAccount: localStorage.getItem('wa_service_account') || '',
+    gsSpreadsheetId: localStorage.getItem('wa_gs_spreadsheet_id') || '',
+    gsSheetName: localStorage.getItem('wa_gs_sheet_name') || 'Sheet1',
+    gsClientEmail: localStorage.getItem('wa_gs_client_email') || '',
+    gsPrivateKey: localStorage.getItem('wa_gs_private_key') || '',
   });
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
@@ -135,9 +129,42 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const labelMenuRef = useRef<HTMLDivElement>(null);
 
-  // Customer profile state
-  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
-  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  // ── Customer profile state ──────────────────────────────────────────────────
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const lastFetchedPhoneRef = useRef<string | null>(null);
+
+  const fetchCustomerOrders = async (phone: string) => {
+    const { gsSpreadsheetId, gsSheetName, gsClientEmail, gsPrivateKey } = config;
+    if (!gsSpreadsheetId || !gsClientEmail || !gsPrivateKey) {
+      setCustomerOrders([]);
+      setCustomerError(null);
+      return;
+    }
+    if (lastFetchedPhoneRef.current === phone) return;
+    lastFetchedPhoneRef.current = phone;
+    setCustomerLoading(true);
+    setCustomerError(null);
+    setCustomerOrders([]);
+    try {
+      const params = new URLSearchParams({
+        phone,
+        spreadsheetId: gsSpreadsheetId,
+        sheetName: gsSheetName || 'Sheet1',
+        clientEmail: gsClientEmail,
+        privateKey: encodeURIComponent(gsPrivateKey),
+      });
+      const res = await fetch(`/api/customer-orders?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal mengambil data');
+      setCustomerOrders(data.orders || []);
+    } catch (e: any) {
+      setCustomerError(e.message || 'Terjadi kesalahan');
+    } finally {
+      setCustomerLoading(false);
+    }
+  };
 
   // Quick Reply state
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>(() => {
@@ -243,60 +270,16 @@ export default function App() {
     activeChatIdRef.current = activeChatId;
     setReplyingToMessage(null);
     setConversations(prev => prev.map(c => c.id === activeChatId ? { ...c, unreadCount: 0 } : c));
+
+    // Reset customer data & fetch for new chat
+    if (activeChatId) {
+      lastFetchedPhoneRef.current = null;
+      setCustomerOrders([]);
+      setCustomerError(null);
+      fetchCustomerOrders(activeChatId);
+    }
   }, [activeChatId]);
 
-  // ============================================================
-  // Fetch profil customer dari Google Sheets saat ganti chat
-  // ============================================================
-  const fetchCustomerProfile = (chatPhone: string) => {
-    if (!config.spreadsheetId || !config.serviceAccount) {
-      setCustomerProfile(null);
-      return;
-    }
-
-    const phone = chatPhone.replace(/\D/g, "");
-    setIsLoadingProfile(true);
-    setCustomerProfile(null);
-
-    fetch(
-      `/api/sheets/customer`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone,
-          spreadsheetId: config.spreadsheetId,
-          serviceAccount: config.serviceAccount
-        })
-      }
-    )
-      .then(async r => {
-        const data: any = await r.json();
-        if (!r.ok) {
-          console.error("Sheets API Error:", data);
-          setCustomerProfile({ found: false, name: `Error: ${data.error}` });
-          return;
-        }
-        setCustomerProfile(data);
-      })
-      .catch((err: any) => {
-        console.error(err);
-        setCustomerProfile({ found: false, name: `Catch Error: ${err.message || String(err)}` });
-      })
-      .finally(() => setIsLoadingProfile(false));
-  };
-
-  useEffect(() => {
-    if (!activeChatId) {
-      setCustomerProfile(null);
-      return;
-    }
-    const chat = conversations.find(c => c.id === activeChatId);
-    if (!chat) return;
-    fetchCustomerProfile(chat.phone);
-  }, [activeChatId, config.spreadsheetId, config.serviceAccount]);
-
-  // Mark all unread incoming messages as read
   const conversationsRef = useRef(conversations);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
@@ -344,7 +327,6 @@ export default function App() {
     const fetchWebhooks = async () => {
       try {
         const phoneId = configRef.current.phoneNumberId;
-
         if (!phoneId) return;
 
         const phoneIdParam = `&phoneId=${encodeURIComponent(phoneId)}`;
@@ -423,12 +405,8 @@ export default function App() {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
                 if (!isCurrentlyActive || document.hidden) {
                   const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : newMsg.type === 'audio' ? (newMsg.audio?.voice ? '[Pesan Suara]' : '[Audio]') : `[${newMsg.type}]`;
-                  const notification = new Notification(`Pesan baru dari ${defaultName}`, {
-                    body: body,
-                  });
-                  notification.onclick = () => {
-                    window.focus();
-                  };
+                  const notification = new Notification(`Pesan baru dari ${defaultName}`, { body });
+                  notification.onclick = () => { window.focus(); };
                 }
               }
 
@@ -514,7 +492,7 @@ export default function App() {
     if (!inputText.trim() && !attachment) return;
 
     if (!config.phoneNumberId || !config.accessToken) {
-      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
+      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan terlebih dahulu.');
       setIsSettingsOpen(true);
       return;
     }
@@ -615,7 +593,6 @@ export default function App() {
       } else {
         if (data.messages && data.messages.length > 0) {
           const realId = data.messages[0].id;
-          
           setConversations(prev => {
             return prev.map(chat => {
               if (chat.id === activeChatId) {
@@ -639,7 +616,7 @@ export default function App() {
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!config.phoneNumberId || !config.accessToken) {
-      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
+      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan terlebih dahulu.');
       return;
     }
     
@@ -700,6 +677,10 @@ export default function App() {
     }
     return { isOpen: false, text: "Sesi 24 jam telah berakhir" };
   }, [activeChat, nowMillis]);
+
+  // ── Customer sidebar first order info ──────────────────────────────────────
+  const customerInfo = customerOrders.length > 0 ? customerOrders[0] : null;
+  const gsConfigured = !!(config.gsSpreadsheetId && config.gsClientEmail && config.gsPrivateKey);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
@@ -1255,7 +1236,6 @@ export default function App() {
                     <Zap className="w-5 h-5" />
                   </button>
 
-                  {/* Quick Reply Panel */}
                   {showQuickReplies && (
                     <div className="absolute bottom-full mb-2 left-0 w-80 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden z-50">
                       <div className="px-3 py-2.5 bg-indigo-600 flex items-center justify-between">
@@ -1351,128 +1331,139 @@ export default function App() {
         )}
       </main>
 
-      {/* ============================================================ */}
-      {/* SIDEBAR KANAN — Customer Profile dari Google Sheets           */}
-      {/* ============================================================ */}
+      {/* ── Customer Profile Sidebar ─────────────────────────────────────────── */}
       {activeChat && (
-        <aside className="w-72 border-l border-slate-200 bg-white flex flex-col overflow-y-auto shrink-0">
-          {/* Header sidebar */}
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-700">Profil Customer</h3>
-            {(config.spreadsheetId && config.serviceAccount) && (
-              <button
-                onClick={() => fetchCustomerProfile(activeChat.phone)}
-                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                title="Refresh data"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoadingProfile ? 'animate-spin' : ''}`} />
-              </button>
+        <aside className="w-64 bg-white border-l border-slate-200 flex flex-col overflow-y-auto">
+          {/* Header profil */}
+          <div className="p-5 border-b border-slate-100 text-center">
+            <div className="w-16 h-16 bg-indigo-100 rounded-full mx-auto mb-3 flex items-center justify-center text-indigo-600 text-2xl font-bold">
+              {(customerInfo?.nama || activeChat.name).charAt(0).toUpperCase()}
+            </div>
+            <h3 className="font-bold text-slate-900 text-sm leading-tight">
+              {customerInfo?.nama || activeChat.name}
+            </h3>
+            {customerInfo?.email && (
+              <p className="text-[11px] text-slate-500 mt-1 flex items-center justify-center gap-1 truncate px-2">
+                <Mail className="w-3 h-3 shrink-0" />
+                <span className="truncate">{customerInfo.email}</span>
+              </p>
             )}
+            <p className="text-[11px] text-slate-400 mt-1">{activeChat.phone}</p>
           </div>
 
-          {/* Loading state */}
-          {isLoadingProfile && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 p-6">
-              <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
-              <p className="text-xs">Memuat data pesanan...</p>
-            </div>
-          )}
+          {/* Body */}
+          <div className="flex-1 p-4 space-y-5">
 
-          {/* Belum dikonfigurasi */}
-          {!isLoadingProfile && (!config.spreadsheetId || !config.serviceAccount) && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-5 py-8 text-center">
-              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                <ShoppingBag className="w-6 h-6 text-slate-400" />
+            {/* Status Google Sheets */}
+            {!gsConfigured && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-[11px] text-amber-700 font-medium flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  Konfigurasi Google Sheets belum diisi di Pengaturan.
+                </p>
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="mt-2 text-[11px] font-bold text-amber-700 underline"
+                >
+                  Buka Pengaturan →
+                </button>
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Isi <span className="font-semibold text-slate-700">Spreadsheet ID</span> dan <span className="font-semibold text-slate-700">Service Account JSON</span> di Pengaturan untuk menampilkan data pesanan customer.
-              </p>
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="text-xs font-bold text-indigo-600 hover:underline"
-              >
-                Buka Pengaturan →
-              </button>
-            </div>
-          )}
+            )}
 
-          {/* Tidak ditemukan atau Error */}
-          {!isLoadingProfile && config.spreadsheetId && config.serviceAccount && customerProfile && !customerProfile.found && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-5 py-8 text-center">
-              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                <User className="w-6 h-6 text-slate-400" />
+            {/* Loading */}
+            {customerLoading && (
+              <div className="flex flex-col items-center py-6 text-slate-400">
+                <RefreshCw className="w-5 h-5 animate-spin mb-2" />
+                <p className="text-xs">Mencari data pesanan...</p>
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                {customerProfile.name ? (
-                  <span className="text-rose-500 font-semibold">{customerProfile.name}</span>
-                ) : (
-                  <>Tidak ada data pesanan untuk nomor <span className="font-mono font-semibold text-slate-700">{activeChat.phone}</span></>
-                )}
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* Data ditemukan */}
-          {!isLoadingProfile && customerProfile?.found && (
-            <div className="flex flex-col">
-              {/* Profil singkat */}
-              <div className="p-4 border-b border-slate-100">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl shrink-0">
-                    {customerProfile.name?.[0]?.toUpperCase() || '?'}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">{customerProfile.name}</p>
-                    <p className="text-xs text-slate-400 truncate">{customerProfile.phone}</p>
-                  </div>
-                </div>
-                {customerProfile.email && (
-                  <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
-                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">{customerProfile.email}</span>
-                  </div>
-                )}
+            {/* Error */}
+            {customerError && !customerLoading && (
+              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                <p className="text-[11px] text-rose-700 font-medium flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {customerError}
+                </p>
+                <button
+                  onClick={() => { lastFetchedPhoneRef.current = null; fetchCustomerOrders(activeChat.id); }}
+                  className="mt-2 text-[11px] font-bold text-rose-600 underline flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" /> Coba lagi
+                </button>
               </div>
+            )}
 
-              {/* Daftar pesanan */}
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    Riwayat Pesanan
-                  </p>
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                    {customerProfile.orders?.length || 0} pesanan
-                  </span>
-                </div>
+            {/* Data tidak ditemukan */}
+            {!customerLoading && !customerError && gsConfigured && customerOrders.length === 0 && (
+              <div className="text-center py-6">
+                <ShoppingBag className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-xs text-slate-400">Tidak ada data pesanan<br />untuk nomor ini.</p>
+                <button
+                  onClick={() => { lastFetchedPhoneRef.current = null; fetchCustomerOrders(activeChat.id); }}
+                  className="mt-3 text-[11px] font-bold text-indigo-500 underline flex items-center gap-1 mx-auto"
+                >
+                  <RefreshCw className="w-3 h-3" /> Refresh
+                </button>
+              </div>
+            )}
 
-                <div className="space-y-2">
-                  {customerProfile.orders?.map((order, i) => (
-                    <div
-                      key={i}
-                      className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-1.5"
+            {/* Daftar pesanan */}
+            {!customerLoading && customerOrders.length > 0 && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Riwayat Pesanan
+                    </h4>
+                    <button
+                      onClick={() => { lastFetchedPhoneRef.current = null; fetchCustomerOrders(activeChat.id); }}
+                      className="text-slate-300 hover:text-indigo-500 transition-colors"
+                      title="Refresh data"
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-                          {order.orderId}
-                        </span>
-                        {order.date && order.date !== '-' && (
-                          <span className="text-[10px] text-slate-500 font-medium">
-                            {order.date}
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {customerOrders.map((order, idx) => (
+                      <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-indigo-200 transition-colors">
+                        <div className="flex items-start justify-between gap-1">
+                          <p className="text-[11px] font-bold text-slate-800 truncate flex-1">
+                            #{order.orderId}
+                          </p>
+                          <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded shrink-0">
+                            Pesanan
                           </span>
-                        )}
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 leading-snug">
+                          {order.produk}
+                        </p>
+                        <p className="text-[11px] font-bold text-emerald-600 mt-1.5">
+                          {order.total}
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-700 leading-snug">{order.product}</p>
-                      <p className="text-xs font-bold text-emerald-600">{order.total}</p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+
+                {/* Ringkasan */}
+                <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5">
+                    Ringkasan
+                  </p>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-500">Total Pesanan</span>
+                    <span className="font-bold text-slate-800">{customerOrders.length}x</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </aside>
       )}
 
-      {/* Settings Modal */}
+      {/* ── Settings Modal ───────────────────────────────────────────────────── */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
@@ -1482,12 +1473,12 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+            <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
               
+              {/* Webhook Config */}
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <h3 className="text-sm font-bold text-slate-800 mb-2">Konfigurasi Webhook</h3>
                 <p className="text-xs text-slate-500 mb-4">Gunakan konfigurasi ini di Meta App Dashboard (WhatsApp &gt; Configuration).</p>
-                
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-600 block mb-1">Callback URL</label>
@@ -1522,11 +1513,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Kredensial WhatsApp API */}
+              {/* WhatsApp API Credentials */}
               <div>
-                <h3 className="text-sm font-bold text-slate-800 mb-2">Kredensial WhatsApp API</h3>
-                <p className="text-xs text-slate-500 mb-4">Diperlukan untuk membalas/mengirim pesan.</p>
-                
+                <h3 className="text-sm font-bold text-slate-800 mb-1">Kredensial WhatsApp API</h3>
+                <p className="text-xs text-slate-500 mb-3">Diperlukan untuk membalas/mengirim pesan.</p>
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-600 block mb-1">Phone Number ID</label>
@@ -1551,39 +1541,57 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Google Sheets Integration */}
+              {/* Google Sheets */}
               <div>
-                <h3 className="text-sm font-bold text-slate-800 mb-2">Integrasi Google Sheets (Data Pesanan)</h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Menampilkan profil & riwayat pesanan customer berdasarkan nomor WhatsApp dari Google Sheets.
+                <h3 className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                  Integrasi Google Sheets (Data Pesanan)
+                </h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  Untuk menampilkan riwayat pesanan customer di sidebar. Kolom sheet: A=Nama, B=Email, C=Phone (628xx), D=Order ID, E=Produk, F=Total.
                 </p>
-                
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-600 block mb-1">Spreadsheet ID</label>
-                    <input
-                      type="text"
-                      value={config.spreadsheetId}
-                      onChange={e => setConfig({ ...config, spreadsheetId: e.target.value })}
-                      placeholder="Contoh: 1mdac542wByNyo9PC3Z08pDHZMqjOAQFkbOlVXWSIwCE"
+                    <input 
+                      type="text" 
+                      value={config.gsSpreadsheetId}
+                      onChange={e => setConfig({...config, gsSpreadsheetId: e.target.value})}
+                      placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
                       className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
                     />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Ambil dari URL Google Sheets: docs.google.com/spreadsheets/d/<span className="font-bold text-indigo-500">ID_DI_SINI</span>/edit
-                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">Ambil dari URL sheets: docs.google.com/spreadsheets/d/<strong>ID_INI</strong>/edit</p>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">Service Account JSON</label>
-                    <textarea
-                      rows={5}
-                      value={config.serviceAccount}
-                      onChange={e => setConfig({ ...config, serviceAccount: e.target.value })}
-                      placeholder={'{"type":"service_account","project_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...","client_email":"...@....iam.gserviceaccount.com"}'}
-                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-xs font-mono focus:outline-none focus:border-indigo-500 resize-none"
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Nama Sheet / Tab</label>
+                    <input 
+                      type="text" 
+                      value={config.gsSheetName}
+                      onChange={e => setConfig({...config, gsSheetName: e.target.value})}
+                      placeholder="Sheet1"
+                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
                     />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Paste isi file JSON service account Google Cloud. Pastikan service account sudah diberi akses <span className="font-semibold">Viewer</span> ke spreadsheet.
-                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Service Account Client Email</label>
+                    <input 
+                      type="text" 
+                      value={config.gsClientEmail}
+                      onChange={e => setConfig({...config, gsClientEmail: e.target.value})}
+                      placeholder="nama@project-id.iam.gserviceaccount.com"
+                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Service Account Private Key</label>
+                    <textarea 
+                      value={config.gsPrivateKey}
+                      onChange={e => setConfig({...config, gsPrivateKey: e.target.value})}
+                      placeholder={"-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"}
+                      rows={4}
+                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500 resize-none font-mono text-xs"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">⚠️ Disimpan di localStorage browser. Jangan gunakan di komputer publik.</p>
                   </div>
                 </div>
               </div>
@@ -1599,9 +1607,16 @@ export default function App() {
                 onClick={() => {
                   localStorage.setItem('wa_phone_number_id', config.phoneNumberId);
                   localStorage.setItem('wa_access_token', config.accessToken);
-                  localStorage.setItem('wa_spreadsheet_id', config.spreadsheetId);
-                  localStorage.setItem('wa_service_account', config.serviceAccount);
+                  localStorage.setItem('wa_gs_spreadsheet_id', config.gsSpreadsheetId);
+                  localStorage.setItem('wa_gs_sheet_name', config.gsSheetName);
+                  localStorage.setItem('wa_gs_client_email', config.gsClientEmail);
+                  localStorage.setItem('wa_gs_private_key', config.gsPrivateKey);
                   setIsSettingsOpen(false);
+                  // Refresh customer data after saving
+                  if (activeChatId) {
+                    lastFetchedPhoneRef.current = null;
+                    fetchCustomerOrders(activeChatId);
+                  }
                 }}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700"
               >
@@ -1627,7 +1642,6 @@ export default function App() {
             </div>
 
             <div className="flex flex-col flex-1 overflow-hidden">
-              {/* Form tambah/edit */}
               <div className="p-4 border-b border-slate-100 bg-slate-50">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
                   {editingQuickReply ? '✏️ Edit Template' : '➕ Template Baru'}
@@ -1668,7 +1682,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Daftar template */}
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                 {quickReplies.length === 0 && (
                   <div className="px-6 py-10 text-center text-slate-400 text-sm">
