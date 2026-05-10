@@ -151,9 +151,22 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
-      if (Array.isArray(data) && data.length > 0) {
-        setOrderHistories(prev => ({ ...prev, [activeChat.id]: data[0] }));
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+        if (typeof data === 'string') {
+          // Tangani jika n8n mengirim stringified JSON di dalam response body
+          data = JSON.parse(data);
+        }
+      } catch (e) {
+        console.error('Failed to parse webhook response:', e);
+        return;
+      }
+
+      const orderData = Array.isArray(data) ? data[0] : data;
+      if (orderData) {
+        setOrderHistories(prev => ({ ...prev, [activeChat.id]: orderData }));
       }
     } catch (error) {
       console.error('Failed to refresh profile:', error);
