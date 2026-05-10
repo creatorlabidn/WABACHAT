@@ -13,139 +13,11 @@ const webhooks: any[] = [];   // pesan masuk
 const outgoing: any[] = [];   // pesan keluar
 const clients: express.Response[] = [];
 
-// ─── Google Sheets JWT helper ─────────────────────────────────────────────────
-
-async function getGoogleAccessToken(clientEmail: string, privateKey: string): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const payload = {
-    iss: clientEmail,
-    scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const base64url = (obj: object) =>
-    Buffer.from(JSON.stringify(obj))
-      .toString("base64")
-      .replace(/=/g, "")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_");
-
-  const headerB64 = base64url(header);
-  const payloadB64 = base64url(payload);
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  // Import private key using Node.js crypto (built-in, no extra deps)
-  const { createSign } = await import("crypto");
-  const sign = createSign("RSA-SHA256");
-  sign.update(signingInput);
-  const signature = sign
-    .sign(privateKey, "base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-
-  const jwt = `${signingInput}.${signature}`;
-
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-
-  const tokenData: any = await tokenRes.json();
-  if (!tokenData.access_token) {
-    throw new Error(`Gagal mendapatkan Google token: ${JSON.stringify(tokenData)}`);
-  }
-  return tokenData.access_token;
-}
-
-async function fetchCustomerFromSheets(
-  phone: string,
-  spreadsheetId: string,
-  sheetName: string,
-  clientEmail: string,
-  privateKey: string
-): Promise<any[]> {
-  const accessToken = await getGoogleAccessToken(clientEmail, privateKey);
-
-  // Ambil semua data dari sheet (kolom A-F)
-  const range = encodeURIComponent(`${sheetName}!A:F`);
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
-
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  const data: any = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.error?.message || "Gagal mengambil data dari Google Sheets");
-  }
-
-  const rows: string[][] = data.values || [];
-  if (rows.length === 0) return [];
-
-  // Normalisasi nomor telepon: hapus +, 0, 62 di awal lalu bandingkan akhiran
-  const normalize = (p: string) => p.replace(/\D/g, "").replace(/^(62|0)/, "");
-  const searchPhone = normalize(phone);
-
-  // Filter baris yang cocok nomor telepon (kolom C = index 2)
-  // Kolom: A=Nama, B=Email, C=Phone, D=Order ID, E=Produk, F=Total
-  const matched = rows
-    .slice(1) // skip header
-    .filter((row) => {
-      const rowPhone = normalize(row[2] || "");
-      return rowPhone === searchPhone;
-    })
-    .map((row) => ({
-      nama: row[0] || "-",
-      email: row[1] || "-",
-      phone: row[2] || "-",
-      orderId: row[3] || "-",
-      produk: row[4] || "-",
-      total: row[5] || "-",
-    }));
-
-  return matched;
-}
-
-// ─── Express server ───────────────────────────────────────────────────────────
-
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
   app.use(express.json());
-
-  // CUSTOMER ORDERS ENDPOINT
-  app.get("/api/customer-orders", async (req, res) => {
-    try {
-      const { phone, spreadsheetId, sheetName, clientEmail, privateKey } = req.query as Record<string, string>;
-
-      if (!phone || !spreadsheetId || !sheetName || !clientEmail || !privateKey) {
-        return res.status(400).json({ error: "Parameter tidak lengkap" });
-      }
-
-      const orders = await fetchCustomerFromSheets(
-        phone,
-        spreadsheetId,
-        sheetName,
-        clientEmail,
-        decodeURIComponent(privateKey)
-      );
-
-      res.json({ orders });
-    } catch (e: any) {
-      console.error("Customer orders error:", e);
-      res.status(500).json({ error: e.message || String(e) });
-    }
-  });
 
   // SEND MESSAGE ENDPOINT
   app.post("/api/send", async (req, res) => {
@@ -237,6 +109,7 @@ async function startServer() {
         return res.status(400).json({ error: "Missing required parameters" });
       }
 
+      // Convert buffer to Blob for native fetch FormData
       const blob = new Blob([file.buffer], { type: file.mimetype });
       
       const formData = new globalThis.FormData();
@@ -271,6 +144,7 @@ async function startServer() {
     }
   });
 
+
   // SSE setup for real-time updates to frontend
   app.get("/api/events", (req, res) => {
     res.setHeader("Content-Type", "text/event-stream");
@@ -279,6 +153,8 @@ async function startServer() {
     res.flushHeaders();
 
     clients.push(res);
+
+    // Send initial state (optional, we could just send connection ack)
     res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
     req.on("close", () => {
@@ -303,11 +179,15 @@ async function startServer() {
 
   // WhatsApp Webhook Verification
   app.get("/api/webhook", (req, res) => {
+    // The verify token you specify in the App Dashboard
     const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my-verify-token";
+
+    // Parse params from the webhook verification request
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
 
+    // Check if a token and mode were sent
     if (mode && token) {
       if (mode === "subscribe" && token === VERIFY_TOKEN) {
         console.log("WEBHOOK_VERIFIED");
@@ -324,14 +204,17 @@ async function startServer() {
   app.post("/api/webhook", (req, res) => {
     console.log("Received Webhook:", JSON.stringify(req.body, null, 2));
     
+    // Check if this is an event from a WhatsApp API
     if (req.body.object) {
       if (
         req.body.entry &&
         req.body.entry[0].changes &&
         req.body.entry[0].changes[0]
       ) {
+        // Simpan semua event: pesan baru DAN status updates (sent/delivered/read)
         webhooks.push(req.body);
         
+        // Notify all connected clients
         clients.forEach(client => {
           client.write(`data: ${JSON.stringify({ type: 'new_message', payload: req.body })}\n\n`);
         });

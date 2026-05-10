@@ -2,8 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
-  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2,
-  ShoppingBag, RefreshCw, Mail, AlertCircle
+  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2
 } from 'lucide-react';
 
 const renderHighlightedText = (text: string, highlight: string) => {
@@ -67,20 +66,13 @@ interface Conversation {
   labels?: string[];
 }
 
-interface CustomerOrder {
-  nama: string;
-  email: string;
-  phone: string;
-  orderId: string;
-  produk: string;
-  total: string;
-}
-
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
     try {
       const saved = localStorage.getItem('wa_conversations');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        return JSON.parse(saved);
+      }
     } catch (e) {
       console.error('Failed to parse conversations from local storage', e);
     }
@@ -116,10 +108,6 @@ export default function App() {
   const [config, setConfig] = useState({
     phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
     accessToken: localStorage.getItem('wa_access_token') || '',
-    gsSpreadsheetId: localStorage.getItem('wa_gs_spreadsheet_id') || '',
-    gsSheetName: localStorage.getItem('wa_gs_sheet_name') || 'Sheet1',
-    gsClientEmail: localStorage.getItem('wa_gs_client_email') || '',
-    gsPrivateKey: localStorage.getItem('wa_gs_private_key') || '',
   });
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
@@ -128,43 +116,6 @@ export default function App() {
   const [hoverPos, setHoverPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const labelMenuRef = useRef<HTMLDivElement>(null);
-
-  // ── Customer profile state ──────────────────────────────────────────────────
-  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
-  const [customerLoading, setCustomerLoading] = useState(false);
-  const [customerError, setCustomerError] = useState<string | null>(null);
-  const lastFetchedPhoneRef = useRef<string | null>(null);
-
-  const fetchCustomerOrders = async (phone: string) => {
-    const { gsSpreadsheetId, gsSheetName, gsClientEmail, gsPrivateKey } = config;
-    if (!gsSpreadsheetId || !gsClientEmail || !gsPrivateKey) {
-      setCustomerOrders([]);
-      setCustomerError(null);
-      return;
-    }
-    if (lastFetchedPhoneRef.current === phone) return;
-    lastFetchedPhoneRef.current = phone;
-    setCustomerLoading(true);
-    setCustomerError(null);
-    setCustomerOrders([]);
-    try {
-      const params = new URLSearchParams({
-        phone,
-        spreadsheetId: gsSpreadsheetId,
-        sheetName: gsSheetName || 'Sheet1',
-        clientEmail: gsClientEmail,
-        privateKey: encodeURIComponent(gsPrivateKey),
-      });
-      const res = await fetch(`/api/customer-orders?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal mengambil data');
-      setCustomerOrders(data.orders || []);
-    } catch (e: any) {
-      setCustomerError(e.message || 'Terjadi kesalahan');
-    } finally {
-      setCustomerLoading(false);
-    }
-  };
 
   // Quick Reply state
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>(() => {
@@ -269,17 +220,12 @@ export default function App() {
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
     setReplyingToMessage(null);
+    
+    // Clear unread count when switching chats
     setConversations(prev => prev.map(c => c.id === activeChatId ? { ...c, unreadCount: 0 } : c));
-
-    // Reset customer data & fetch for new chat
-    if (activeChatId) {
-      lastFetchedPhoneRef.current = null;
-      setCustomerOrders([]);
-      setCustomerError(null);
-      fetchCustomerOrders(activeChatId);
-    }
   }, [activeChatId]);
 
+  // Mark all unread incoming messages as read
   const conversationsRef = useRef(conversations);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
@@ -322,11 +268,16 @@ export default function App() {
   const isInitialFetchRef = useRef(true);
 
   useEffect(() => {
+    // Track processed message IDs to avoid duplicates during polling
     const processedMsgIds = new Set<string>();
 
     const fetchWebhooks = async () => {
       try {
         const phoneId = configRef.current.phoneNumberId;
+
+        // Jangan fetch jika Phone Number ID belum dikonfigurasi —
+        // tanpa filter phoneId, server akan mengembalikan SEMUA pesan
+        // dari semua nomor yang pernah masuk, bukan milik akun ini.
         if (!phoneId) return;
 
         const phoneIdParam = `&phoneId=${encodeURIComponent(phoneId)}`;
@@ -351,6 +302,7 @@ export default function App() {
           ) {
             const value = payload.entry[0].changes[0].value;
             
+            // Handle message status updates
             if (value.statuses) {
               const statusUpdates = value.statuses;
               statusUpdates.forEach((statusUpdate: any) => {
@@ -385,6 +337,7 @@ export default function App() {
               });
             }
 
+            // Handle new messages
             if (value.messages) {
               const contacts = value.contacts as WAContact[];
               const messages = value.messages as WAMessage[];
@@ -393,10 +346,12 @@ export default function App() {
               
               const newMsg = messages[0];
               
+              // Skip if already processed
               if (processedMsgIds.has(newMsg.id)) return;
               processedMsgIds.add(newMsg.id);
 
               const contact = contacts ? contacts[0] : null;
+              // Untuk pesan keluar (_outgoing), gunakan _to sebagai ID chat
               const isOutgoing = payload._outgoing === true;
               const phone = isOutgoing ? payload._to : newMsg.from;
               const defaultName = contact ? contact.profile.name : `+${phone}`;
@@ -405,8 +360,12 @@ export default function App() {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
                 if (!isCurrentlyActive || document.hidden) {
                   const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : newMsg.type === 'audio' ? (newMsg.audio?.voice ? '[Pesan Suara]' : '[Audio]') : `[${newMsg.type}]`;
-                  const notification = new Notification(`Pesan baru dari ${defaultName}`, { body });
-                  notification.onclick = () => { window.focus(); };
+                  const notification = new Notification(`Pesan baru dari ${defaultName}`, {
+                    body: body,
+                  });
+                  notification.onclick = () => {
+                    window.focus();
+                  };
                 }
               }
 
@@ -441,6 +400,7 @@ export default function App() {
                   return prev;
                 }
 
+                // Avoid duplicates in state
                 const existingChat = prev.find(c => c.id === phone);
                 if (existingChat && existingChat.messages.some(m => m.id === newMsg.id)) {
                   return prev;
@@ -454,6 +414,7 @@ export default function App() {
                     ...existingChat,
                     messages: [...existingChat.messages, newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    // Pesan keluar tidak menambah unread count
                     unreadCount: isOutgoing ? (existingChat.unreadCount || 0) : isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
                   };
                   return [updatedChat, ...prev.filter(c => c.id !== phone)];
@@ -478,7 +439,10 @@ export default function App() {
       }
     };
 
+    // Initial fetch
     fetchWebhooks();
+
+    // Poll every 3 seconds
     const interval = setInterval(fetchWebhooks, 3000);
     return () => clearInterval(interval);
   }, []);
@@ -492,7 +456,7 @@ export default function App() {
     if (!inputText.trim() && !attachment) return;
 
     if (!config.phoneNumberId || !config.accessToken) {
-      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan terlebih dahulu.');
+      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
       setIsSettingsOpen(true);
       return;
     }
@@ -502,6 +466,7 @@ export default function App() {
     try {
       let mediaId: string | undefined;
 
+      // Handle file upload if there's an attachment
       if (attachment) {
         const formData = new FormData();
         formData.append("file", attachment);
@@ -542,6 +507,7 @@ export default function App() {
       const replyToMsg = replyingToMessage;
       setReplyingToMessage(null);
 
+      // Update UI optimistically after upload starts/finishes for the message
       const newMsg: WAMessage = {
         from: "me",
         id: `local_${Date.now()}`,
@@ -576,7 +542,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: activeChat!.id,
+          to: activeChat.id,
           message: messageToSend,
           token: config.accessToken,
           phoneId: config.phoneNumberId,
@@ -593,6 +559,7 @@ export default function App() {
       } else {
         if (data.messages && data.messages.length > 0) {
           const realId = data.messages[0].id;
+          
           setConversations(prev => {
             return prev.map(chat => {
               if (chat.id === activeChatId) {
@@ -616,10 +583,11 @@ export default function App() {
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!config.phoneNumberId || !config.accessToken) {
-      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan terlebih dahulu.');
+      alert('Mohon isi Phone Number ID dan Access Token di Pengaturan (Settings) terlebih dahulu.');
       return;
     }
     
+    // Optimistic UI update
     setConversations(prev => {
       return prev.map(chat => {
         if (chat.id === activeChatId) {
@@ -645,7 +613,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: activeChat!.id,
+          to: activeChat.id,
           message_id: messageId,
           emoji,
           token: config.accessToken,
@@ -677,10 +645,6 @@ export default function App() {
     }
     return { isOpen: false, text: "Sesi 24 jam telah berakhir" };
   }, [activeChat, nowMillis]);
-
-  // ── Customer sidebar first order info ──────────────────────────────────────
-  const customerInfo = customerOrders.length > 0 ? customerOrders[0] : null;
-  const gsConfigured = !!(config.gsSpreadsheetId && config.gsClientEmail && config.gsPrivateKey);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
@@ -746,20 +710,24 @@ export default function App() {
                 }}
                 onMouseEnter={(e) => {
                   if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                  // Capture target before setTimeout — synthetic event becomes invalid after delay
                   const target = e.currentTarget as HTMLElement;
                   hoverTimeoutRef.current = setTimeout(() => {
                     if (chat.unreadCount && chat.unreadCount > 0) {
                       const rect = target.getBoundingClientRect();
-                      const popupWidth = 288;
+                      const popupWidth = 288; // w-72
                       const popupMaxHeight = 340;
                       const viewportHeight = window.innerHeight;
                       const viewportWidth = window.innerWidth;
 
+                      // Position to the right of the nav panel
                       let leftPos = rect.right + 8;
+                      // If popup would overflow right edge, flip to left
                       if (leftPos + popupWidth > viewportWidth - 8) {
                         leftPos = rect.left - popupWidth - 8;
                       }
 
+                      // Align top with hovered item, clamp so popup stays in viewport
                       let topPos = rect.top;
                       if (topPos + popupMaxHeight > viewportHeight - 16) {
                         topPos = Math.max(16, viewportHeight - popupMaxHeight - 16);
@@ -817,7 +785,7 @@ export default function App() {
           })}
         </div>
 
-        {/* Portal: Hover Preview Popup */}
+        {/* Portal: Hover Preview Popup — rendered to document.body, always above everything */}
         {hoveredChatId && (() => {
           const hoveredChat = conversations.find(c => c.id === hoveredChatId);
           if (!hoveredChat) return null;
@@ -829,6 +797,7 @@ export default function App() {
               style={{
                 top: hoverPos.top,
                 left: hoverPos.left,
+                // Ensure popup is always rendered above every other element
                 zIndex: 2147483647,
                 maxHeight: 'calc(100vh - 32px)',
               }}
@@ -869,7 +838,7 @@ export default function App() {
       </nav>
 
       {/* Chat View */}
-      <main className="flex-1 flex flex-col bg-[#F8FAFC] min-w-0">
+      <main className="flex-1 flex flex-col bg-[#F8FAFC]">
         {activeChat ? (
           <>
             <header className="h-16 bg-white border-b border-slate-200 flex items-center px-6 justify-between">
@@ -1112,7 +1081,7 @@ export default function App() {
                       </div>
                     </div>
                     
-                    {/* Action buttons */}
+                    {/* Action buttons - absolute positioned beside the message */}
                     <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? '-left-[80px]' : '-right-[80px]'} w-[76px] opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1 px-1`}>
                       <button 
                         className="p-1.5 flex items-center justify-center bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 shadow-sm"
@@ -1145,6 +1114,7 @@ export default function App() {
                             {emoji}
                           </button>
                         ))}
+                        {/* Remove reaction option if already reacted by me */}
                         {msg.reactions?.some(r => r.fromMe) && (
                           <button 
                             className="text-lg text-slate-400 hover:text-red-500 ml-1 border-l pl-2 border-slate-200"
@@ -1236,6 +1206,7 @@ export default function App() {
                     <Zap className="w-5 h-5" />
                   </button>
 
+                  {/* Quick Reply Panel */}
                   {showQuickReplies && (
                     <div className="absolute bottom-full mb-2 left-0 w-80 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden z-50">
                       <div className="px-3 py-2.5 bg-indigo-600 flex items-center justify-between">
@@ -1331,139 +1302,56 @@ export default function App() {
         )}
       </main>
 
-      {/* ── Customer Profile Sidebar ─────────────────────────────────────────── */}
+      {/* Customer Details Panel */}
       {activeChat && (
-        <aside className="w-64 bg-white border-l border-slate-200 flex flex-col overflow-y-auto">
-          {/* Header profil */}
-          <div className="p-5 border-b border-slate-100 text-center">
-            <div className="w-16 h-16 bg-indigo-100 rounded-full mx-auto mb-3 flex items-center justify-center text-indigo-600 text-2xl font-bold">
-              {(customerInfo?.nama || activeChat.name).charAt(0).toUpperCase()}
+        <aside className="w-64 bg-white border-l border-slate-200 p-6 flex flex-col overflow-y-auto">
+          <div className="text-center">
+            <div className="w-20 h-20 bg-slate-100 rounded-full mx-auto mb-4 border-2 border-slate-200 flex items-center justify-center text-slate-400 text-2xl font-bold">
+              {activeChat.name.charAt(0)}
             </div>
-            <h3 className="font-bold text-slate-900 text-sm leading-tight">
-              {customerInfo?.nama || activeChat.name}
-            </h3>
-            {customerInfo?.email && (
-              <p className="text-[11px] text-slate-500 mt-1 flex items-center justify-center gap-1 truncate px-2">
-                <Mail className="w-3 h-3 shrink-0" />
-                <span className="truncate">{customerInfo.email}</span>
-              </p>
-            )}
-            <p className="text-[11px] text-slate-400 mt-1">{activeChat.phone}</p>
+            <h3 className="font-bold text-slate-900">{activeChat.name}</h3>
+            <p className="text-xs text-slate-500 mt-1">Jakarta, Indonesia</p>
           </div>
 
-          {/* Body */}
-          <div className="flex-1 p-4 space-y-5">
-
-            {/* Status Google Sheets */}
-            {!gsConfigured && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-[11px] text-amber-700 font-medium flex items-start gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  Konfigurasi Google Sheets belum diisi di Pengaturan.
-                </p>
-                <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="mt-2 text-[11px] font-bold text-amber-700 underline"
-                >
-                  Buka Pengaturan →
-                </button>
-              </div>
-            )}
-
-            {/* Loading */}
-            {customerLoading && (
-              <div className="flex flex-col items-center py-6 text-slate-400">
-                <RefreshCw className="w-5 h-5 animate-spin mb-2" />
-                <p className="text-xs">Mencari data pesanan...</p>
-              </div>
-            )}
-
-            {/* Error */}
-            {customerError && !customerLoading && (
-              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-                <p className="text-[11px] text-rose-700 font-medium flex items-start gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  {customerError}
-                </p>
-                <button
-                  onClick={() => { lastFetchedPhoneRef.current = null; fetchCustomerOrders(activeChat.id); }}
-                  className="mt-2 text-[11px] font-bold text-rose-600 underline flex items-center gap-1"
-                >
-                  <RefreshCw className="w-3 h-3" /> Coba lagi
-                </button>
-              </div>
-            )}
-
-            {/* Data tidak ditemukan */}
-            {!customerLoading && !customerError && gsConfigured && customerOrders.length === 0 && (
-              <div className="text-center py-6">
-                <ShoppingBag className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                <p className="text-xs text-slate-400">Tidak ada data pesanan<br />untuk nomor ini.</p>
-                <button
-                  onClick={() => { lastFetchedPhoneRef.current = null; fetchCustomerOrders(activeChat.id); }}
-                  className="mt-3 text-[11px] font-bold text-indigo-500 underline flex items-center gap-1 mx-auto"
-                >
-                  <RefreshCw className="w-3 h-3" /> Refresh
-                </button>
-              </div>
-            )}
-
-            {/* Daftar pesanan */}
-            {!customerLoading && customerOrders.length > 0 && (
-              <>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Riwayat Pesanan
-                    </h4>
-                    <button
-                      onClick={() => { lastFetchedPhoneRef.current = null; fetchCustomerOrders(activeChat.id); }}
-                      className="text-slate-300 hover:text-indigo-500 transition-colors"
-                      title="Refresh data"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {customerOrders.map((order, idx) => (
-                      <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-indigo-200 transition-colors">
-                        <div className="flex items-start justify-between gap-1">
-                          <p className="text-[11px] font-bold text-slate-800 truncate flex-1">
-                            #{order.orderId}
-                          </p>
-                          <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded shrink-0">
-                            Pesanan
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 leading-snug">
-                          {order.produk}
-                        </p>
-                        <p className="text-[11px] font-bold text-emerald-600 mt-1.5">
-                          {order.total}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+          <div className="mt-8 space-y-6">
+            <div>
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Kontak Details</h4>
+              <div className="space-y-2">
+                <div className="text-sm text-slate-700 font-medium flex justify-between">
+                  <span>WA:</span> 
+                  <span className="text-slate-500">{activeChat.phone}</span>
                 </div>
-
-                {/* Ringkasan */}
-                <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
-                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5">
-                    Ringkasan
-                  </p>
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-slate-500">Total Pesanan</span>
-                    <span className="font-bold text-slate-800">{customerOrders.length}x</span>
-                  </div>
+                <div className="text-sm text-slate-700 font-medium flex justify-between">
+                  <span>ID:</span> 
+                  <span className="text-slate-500">CUST-{activeChat.phone.slice(-4)}</span>
                 </div>
-              </>
-            )}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Riwayat Pesanan</h4>
+              <div className="space-y-3">
+                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                  <p className="text-xs font-bold text-slate-800">Order #8829</p>
+                  <p className="text-[10px] text-slate-500">Pending • Rp 450.000</p>
+                </div>
+                <div className="p-2 bg-slate-50 rounded border border-slate-100">
+                  <p className="text-xs font-bold text-slate-800">Order #8712</p>
+                  <p className="text-[10px] text-slate-500">Selesai • Rp 1.200.000</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-4">
+              <button className="w-full border border-slate-200 text-slate-600 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors">
+                Lihat Profil Lengkap
+              </button>
+            </div>
           </div>
         </aside>
       )}
 
-      {/* ── Settings Modal ───────────────────────────────────────────────────── */}
+      {/* Settings Modal */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
@@ -1473,12 +1361,12 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
               
-              {/* Webhook Config */}
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <h3 className="text-sm font-bold text-slate-800 mb-2">Konfigurasi Webhook</h3>
                 <p className="text-xs text-slate-500 mb-4">Gunakan konfigurasi ini di Meta App Dashboard (WhatsApp &gt; Configuration).</p>
+                
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-600 block mb-1">Callback URL</label>
@@ -1513,10 +1401,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* WhatsApp API Credentials */}
               <div>
-                <h3 className="text-sm font-bold text-slate-800 mb-1">Kredensial WhatsApp API</h3>
-                <p className="text-xs text-slate-500 mb-3">Diperlukan untuk membalas/mengirim pesan.</p>
+                <h3 className="text-sm font-bold text-slate-800 mb-2">Kredensial API</h3>
+                <p className="text-xs text-slate-500 mb-4">Diperlukan untuk membalas/mengirim pesan.</p>
+                
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-600 block mb-1">Phone Number ID</label>
@@ -1540,61 +1428,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
-              {/* Google Sheets */}
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                  Integrasi Google Sheets (Data Pesanan)
-                </h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  Untuk menampilkan riwayat pesanan customer di sidebar. Kolom sheet: A=Nama, B=Email, C=Phone (628xx), D=Order ID, E=Produk, F=Total.
-                </p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">Spreadsheet ID</label>
-                    <input 
-                      type="text" 
-                      value={config.gsSpreadsheetId}
-                      onChange={e => setConfig({...config, gsSpreadsheetId: e.target.value})}
-                      placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">Ambil dari URL sheets: docs.google.com/spreadsheets/d/<strong>ID_INI</strong>/edit</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">Nama Sheet / Tab</label>
-                    <input 
-                      type="text" 
-                      value={config.gsSheetName}
-                      onChange={e => setConfig({...config, gsSheetName: e.target.value})}
-                      placeholder="Sheet1"
-                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">Service Account Client Email</label>
-                    <input 
-                      type="text" 
-                      value={config.gsClientEmail}
-                      onChange={e => setConfig({...config, gsClientEmail: e.target.value})}
-                      placeholder="nama@project-id.iam.gserviceaccount.com"
-                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">Service Account Private Key</label>
-                    <textarea 
-                      value={config.gsPrivateKey}
-                      onChange={e => setConfig({...config, gsPrivateKey: e.target.value})}
-                      placeholder={"-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"}
-                      rows={4}
-                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500 resize-none font-mono text-xs"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">⚠️ Disimpan di localStorage browser. Jangan gunakan di komputer publik.</p>
-                  </div>
-                </div>
-              </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end space-x-2">
               <button 
@@ -1607,16 +1440,7 @@ export default function App() {
                 onClick={() => {
                   localStorage.setItem('wa_phone_number_id', config.phoneNumberId);
                   localStorage.setItem('wa_access_token', config.accessToken);
-                  localStorage.setItem('wa_gs_spreadsheet_id', config.gsSpreadsheetId);
-                  localStorage.setItem('wa_gs_sheet_name', config.gsSheetName);
-                  localStorage.setItem('wa_gs_client_email', config.gsClientEmail);
-                  localStorage.setItem('wa_gs_private_key', config.gsPrivateKey);
                   setIsSettingsOpen(false);
-                  // Refresh customer data after saving
-                  if (activeChatId) {
-                    lastFetchedPhoneRef.current = null;
-                    fetchCustomerOrders(activeChatId);
-                  }
                 }}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700"
               >
@@ -1642,6 +1466,7 @@ export default function App() {
             </div>
 
             <div className="flex flex-col flex-1 overflow-hidden">
+              {/* Form tambah/edit */}
               <div className="p-4 border-b border-slate-100 bg-slate-50">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
                   {editingQuickReply ? '✏️ Edit Template' : '➕ Template Baru'}
@@ -1682,6 +1507,7 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Daftar template */}
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                 {quickReplies.length === 0 && (
                   <div className="px-6 py-10 text-center text-slate-400 text-sm">
