@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   MessageSquare, User, Settings, Phone, Video, Paperclip, 
-  Search, Send, CheckCircle2, CircleDashed, X, Tag
+  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2
 } from 'lucide-react';
 
 const renderHighlightedText = (text: string, highlight: string) => {
@@ -48,6 +48,12 @@ interface WAMessage {
     video_url?: string;
     ctwa_clid?: string;
   };
+}
+
+interface QuickReply {
+  id: string;
+  title: string;
+  message: string;
 }
 
 interface Conversation {
@@ -111,10 +117,58 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const labelMenuRef = useRef<HTMLDivElement>(null);
 
+  // Quick Reply state
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>(() => {
+    try {
+      const saved = localStorage.getItem('wa_quick_replies');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [
+      { id: '1', title: 'Salam pembuka', message: 'Halo {{nama}}, terima kasih telah menghubungi kami! Ada yang bisa kami bantu?' },
+      { id: '2', title: 'Konfirmasi pesanan', message: 'Baik {{nama}}, pesanan Anda sedang kami proses. Mohon ditunggu ya 🙏' },
+      { id: '3', title: 'Minta info lebih', message: 'Boleh kami minta info lebih lanjut {{nama}}? Agar kami bisa membantu dengan lebih baik.' },
+    ];
+  });
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [quickReplySearch, setQuickReplySearch] = useState('');
+  const [isQuickReplySettingsOpen, setIsQuickReplySettingsOpen] = useState(false);
+  const [editingQuickReply, setEditingQuickReply] = useState<QuickReply | null>(null);
+  const [qrForm, setQrForm] = useState({ title: '', message: '' });
+  const quickReplyPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('wa_quick_replies', JSON.stringify(quickReplies));
+  }, [quickReplies]);
+
+  const saveQuickReply = () => {
+    if (!qrForm.title.trim() || !qrForm.message.trim()) return;
+    if (editingQuickReply) {
+      setQuickReplies(prev => prev.map(qr => qr.id === editingQuickReply.id ? { ...qr, ...qrForm } : qr));
+    } else {
+      setQuickReplies(prev => [...prev, { id: Date.now().toString(), ...qrForm }]);
+    }
+    setEditingQuickReply(null);
+    setQrForm({ title: '', message: '' });
+  };
+
+  const deleteQuickReply = (id: string) => {
+    setQuickReplies(prev => prev.filter(qr => qr.id !== id));
+  };
+
+  const applyQuickReply = (qr: QuickReply) => {
+    const msg = qr.message.replace(/\{\{nama\}\}/gi, activeChat?.name || '');
+    setInputText(msg);
+    setShowQuickReplies(false);
+    setQuickReplySearch('');
+  };
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (labelMenuRef.current && !labelMenuRef.current.contains(event.target as Node)) {
         setShowLabelMenu(false);
+      }
+      if (quickReplyPanelRef.current && !quickReplyPanelRef.current.contains(event.target as Node)) {
+        setShowQuickReplies(false);
       }
     }
     function handleKeyDown(event: KeyboardEvent) {
@@ -1141,6 +1195,81 @@ export default function App() {
                 >
                   <Paperclip className="w-5 h-5" />
                 </button>
+                {/* Quick Reply Button */}
+                <div ref={quickReplyPanelRef} className="relative mb-0.5">
+                  <button
+                    onClick={() => { setShowQuickReplies(v => !v); setQuickReplySearch(''); }}
+                    disabled={!activeChatWindow.isOpen}
+                    className={`p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showQuickReplies ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'}`}
+                    title="Balasan Cepat"
+                  >
+                    <Zap className="w-5 h-5" />
+                  </button>
+
+                  {/* Quick Reply Panel */}
+                  {showQuickReplies && (
+                    <div className="absolute bottom-full mb-2 left-0 w-80 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden z-50">
+                      <div className="px-3 py-2.5 bg-indigo-600 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-white">
+                          <Zap className="w-4 h-4" />
+                          <span className="text-sm font-bold">Balasan Cepat</span>
+                        </div>
+                        <button
+                          onClick={() => { setShowQuickReplies(false); setIsQuickReplySettingsOpen(true); setEditingQuickReply(null); setQrForm({ title: '', message: '' }); }}
+                          className="text-indigo-200 hover:text-white transition-colors"
+                          title="Kelola template"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="p-2 border-b border-slate-100">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Cari template..."
+                            value={quickReplySearch}
+                            onChange={e => setQuickReplySearch(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
+                        {quickReplies
+                          .filter(qr => !quickReplySearch || qr.title.toLowerCase().includes(quickReplySearch.toLowerCase()) || qr.message.toLowerCase().includes(quickReplySearch.toLowerCase()))
+                          .map(qr => (
+                            <button
+                              key={qr.id}
+                              onClick={() => applyQuickReply(qr)}
+                              className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition-colors group"
+                            >
+                              <p className="text-xs font-bold text-indigo-600 mb-0.5 flex items-center gap-1">
+                                <Zap className="w-3 h-3" /> {qr.title}
+                              </p>
+                              <p className="text-sm text-slate-600 line-clamp-2 leading-snug">
+                                {qr.message.replace(/\{\{nama\}\}/gi, activeChat?.name || '{{nama}}')}
+                              </p>
+                            </button>
+                          ))
+                        }
+                        {quickReplies.filter(qr => !quickReplySearch || qr.title.toLowerCase().includes(quickReplySearch.toLowerCase()) || qr.message.toLowerCase().includes(quickReplySearch.toLowerCase())).length === 0 && (
+                          <div className="px-4 py-6 text-center text-slate-400 text-sm">
+                            Template tidak ditemukan
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-2 border-t border-slate-100">
+                        <button
+                          onClick={() => { setShowQuickReplies(false); setIsQuickReplySettingsOpen(true); setEditingQuickReply(null); setQrForm({ title: '', message: '' }); }}
+                          className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Tambah Template Baru
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <textarea 
                   value={inputText}
                   disabled={!activeChatWindow.isOpen}
@@ -1317,6 +1446,105 @@ export default function App() {
               >
                 Simpan
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Reply Settings Modal */}
+      {isQuickReplySettingsOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-indigo-600" />
+                <h2 className="text-xl font-bold text-slate-800">Kelola Balasan Cepat</h2>
+              </div>
+              <button onClick={() => { setIsQuickReplySettingsOpen(false); setEditingQuickReply(null); setQrForm({ title: '', message: '' }); }} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col flex-1 overflow-hidden">
+              {/* Form tambah/edit */}
+              <div className="p-4 border-b border-slate-100 bg-slate-50">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                  {editingQuickReply ? '✏️ Edit Template' : '➕ Template Baru'}
+                </h3>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Nama shortcut (contoh: Salam pembuka)"
+                    value={qrForm.title}
+                    onChange={e => setQrForm(f => ({ ...f, title: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                  <textarea
+                    placeholder={"Isi pesan... (gunakan {{nama}} untuk nama kontak)"}
+                    value={qrForm.message}
+                    onChange={e => setQrForm(f => ({ ...f, message: e.target.value }))}
+                    rows={3}
+                    className="w-full border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500 resize-none"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    {editingQuickReply && (
+                      <button
+                        onClick={() => { setEditingQuickReply(null); setQrForm({ title: '', message: '' }); }}
+                        className="px-3 py-1.5 text-sm font-bold text-slate-500 hover:text-slate-700"
+                      >
+                        Batal
+                      </button>
+                    )}
+                    <button
+                      onClick={saveQuickReply}
+                      disabled={!qrForm.title.trim() || !qrForm.message.trim()}
+                      className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="w-4 h-4" />
+                      {editingQuickReply ? 'Simpan Perubahan' : 'Tambah'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Daftar template */}
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                {quickReplies.length === 0 && (
+                  <div className="px-6 py-10 text-center text-slate-400 text-sm">
+                    Belum ada template. Tambahkan di atas.
+                  </div>
+                )}
+                {quickReplies.map(qr => (
+                  <div key={qr.id} className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-indigo-600 flex items-center gap-1 mb-0.5">
+                        <Zap className="w-3 h-3" /> {qr.title}
+                      </p>
+                      <p className="text-sm text-slate-600 line-clamp-2">{qr.message}</p>
+                    </div>
+                    <div className="flex gap-1 shrink-0 mt-0.5">
+                      <button
+                        onClick={() => { setEditingQuickReply(qr); setQrForm({ title: qr.title, message: qr.message }); }}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteQuickReply(qr.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Hapus"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 text-center">
+              <p className="text-[11px] text-slate-400">Gunakan <code className="bg-slate-200 px-1 rounded">{'{{nama}}'}</code> untuk menyisipkan nama kontak secara otomatis</p>
             </div>
           </div>
         </div>
