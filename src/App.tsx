@@ -716,7 +716,7 @@ export default function App() {
   }, [activeChat, nowMillis]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-slate-50 font-sans">
       {/* Global Sidebar */}
       <aside className="hidden md:flex w-16 bg-slate-900 flex-col items-center py-6 space-y-8 text-slate-400 shrink-0">
         <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
@@ -907,10 +907,10 @@ export default function App() {
       </nav>
 
       {/* Chat View */}
-      <main className={`${!activeChatId ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-[#F8FAFC] min-w-0`}>
+      <main className={`${!activeChatId ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-[#F8FAFC] min-w-0 relative`}>
         {activeChat ? (
           <>
-            <header className="h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 justify-between shrink-0">
+            <header className="sticky top-0 z-20 h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 justify-between shrink-0">
               <div className="flex items-center space-x-2 md:space-x-3">
                 <button 
                   onClick={() => setActiveChatId(null)} 
