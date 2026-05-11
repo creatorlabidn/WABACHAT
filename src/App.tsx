@@ -71,7 +71,8 @@ export default function App() {
     try {
       const saved = localStorage.getItem('wa_conversations');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed: Conversation[] = JSON.parse(saved);
+        return parsed.map(c => c.name === 'Me' ? { ...c, name: c.phone || c.id } : c);
       }
     } catch (e) {
       console.error('Failed to parse conversations from local storage', e);
@@ -405,7 +406,13 @@ export default function App() {
               // Untuk pesan keluar (_outgoing), gunakan _to sebagai ID chat
               const isOutgoing = payload._outgoing === true;
               const phone = isOutgoing ? payload._to : newMsg.from;
-              const defaultName = contact ? contact.profile.name : `+${phone}`;
+              
+              // Jika ini pesan keluar, profile.name dari webhook biasanya adalah "Me" atau nama bisnis pengirim,
+              // bukan nama pelanggan. Jadi kita hindari menggunakan contact.profile.name untuk pesan keluar.
+              let defaultName = (contact && !isOutgoing) ? contact.profile.name : `+${phone}`;
+              if (defaultName === 'Me') {
+                defaultName = `+${phone}`;
+              }
 
               if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
