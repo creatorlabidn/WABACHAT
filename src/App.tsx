@@ -970,7 +970,7 @@ export default function App() {
         {activeChat ? (
           <>
             <header className="sticky top-0 z-20 h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 justify-between shrink-0">
-              <div className="flex items-center space-x-2 md:space-x-3">
+              <div className="flex items-center space-x-2 md:space-x-3 flex-1 min-w-0">
                 <button 
                   onClick={() => setActiveChatId(null)} 
                   className="md:hidden p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg shrink-0 -ml-2"
@@ -981,41 +981,44 @@ export default function App() {
                 <div className="w-10 h-10 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-500 font-medium shrink-0">
                   {activeChat.name.charAt(0)}
                 </div>
-                <div className="min-w-0">
-                  <h2 className="font-bold text-slate-900 flex items-center gap-2 truncate">
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-bold text-slate-900 flex items-center gap-1.5 md:gap-2 w-full">
                     <span className="truncate">{activeChat.name}</span>
-                    {activeChat.labels && activeChat.labels.map(label => {
-                      const color = 
-                        label === 'Prospek' ? 'bg-blue-100 text-blue-700' :
-                        label === 'Selesai' ? 'bg-emerald-100 text-emerald-700' :
-                        label === 'Komplain' ? 'bg-rose-100 text-rose-700' : 
-                        'bg-slate-100 text-slate-700';
-                      return (
-                        <span key={label} className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${color}`}>
-                          {label}
-                        </span>
-                      );
-                    })}
+                    <div className="hidden sm:flex items-center gap-1 shrink-0">
+                      {activeChat.labels && activeChat.labels.map(label => {
+                        const color = 
+                          label === 'Prospek' ? 'bg-blue-100 text-blue-700' :
+                          label === 'Selesai' ? 'bg-emerald-100 text-emerald-700' :
+                          label === 'Komplain' ? 'bg-rose-100 text-rose-700' : 
+                          'bg-slate-100 text-slate-700';
+                        return (
+                          <span key={label} className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${color} whitespace-nowrap`}>
+                            {label}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </h2>
-                  <p className="text-xs flex items-center font-medium mt-0.5">
-                    <span className="text-green-600 flex items-center">
-                      <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5" /> Online
+                  <p className="text-[10px] md:text-xs flex items-center font-medium mt-0.5 w-full truncate text-slate-500">
+                    <span className="text-green-600 flex items-center shrink-0">
+                      <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-500 rounded-full mr-1.5" /> Online
                     </span>
-                    <span className="mx-2 text-slate-300">|</span>
-                    <span className={activeChatWindow.isOpen ? 'text-indigo-600' : 'text-rose-500'}>
+                    <span className="mx-1.5 md:mx-2 text-slate-300 shrink-0">|</span>
+                    <span className={`${activeChatWindow.isOpen ? 'text-indigo-600' : 'text-rose-500'} truncate`}>
                       {activeChatWindow.text}
                     </span>
                   </p>
                 </div>
               </div>
-              <div ref={labelMenuRef} className="flex space-x-2 relative">
+              <div ref={labelMenuRef} className="flex items-center space-x-1 sm:space-x-2 relative shrink-0">
                 <button 
                   onClick={() => setShowLabelMenu(!showLabelMenu)}
-                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
                   title="Tag / Label Obrolan"
                 >
                   <Tag className="w-5 h-5" />
                 </button>
+
                 
                 {showLabelMenu && (
                   <div className="absolute top-12 right-0 w-48 bg-white border border-slate-200 shadow-xl rounded-xl z-50 overflow-hidden">
@@ -1044,14 +1047,14 @@ export default function App() {
 
                 <button 
                   onClick={() => setChatToDelete(activeChat.id)}
-                  className="p-2 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors"
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors"
                   title="Hapus Obrolan"
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
                 <button 
                   onClick={() => setActiveChatId(null)}
-                  className="hidden md:block p-2 ml-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                  className="hidden md:block p-1.5 sm:p-2 ml-1 sm:ml-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
                   title="Tutup Obrolan (Esc)"
                 >
                   <X className="w-5 h-5" />
