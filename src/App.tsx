@@ -138,13 +138,23 @@ export default function App() {
   const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [orderHistories, setOrderHistories] = useState<Record<string, any>>({});
   const quickReplyPanelRef = useRef<HTMLDivElement>(null);
+  const fetchedProfilesRef = useRef<Set<string>>(new Set());
 
-  const handleRefreshProfile = async (targetId?: string, targetName?: string) => {
-    const idToRefresh = targetId || activeChat?.id;
-    const nameToRefresh = targetName || activeChat?.name;
+  const handleRefreshProfile = async (targetId?: string | any, targetName?: string | any, isBackground = false) => {
+    // protect against event objects
+    const safeTargetId = typeof targetId === 'string' ? targetId : activeChat?.id;
+    const safeTargetName = typeof targetName === 'string' ? targetName : activeChat?.name;
+    const idToRefresh = safeTargetId;
+    const nameToRefresh = safeTargetName;
     if (!idToRefresh) return;
     
-    setIsRefreshingProfile(true);
+    // Prevent duplicated background fetches
+    if (isBackground) {
+      if (fetchedProfilesRef.current.has(idToRefresh)) return;
+      fetchedProfilesRef.current.add(idToRefresh);
+    }
+    
+    if (!isBackground) setIsRefreshingProfile(true);
     try {
       const payload = {
         phone: idToRefresh,
@@ -180,7 +190,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to refresh profile:', error);
     } finally {
-      setIsRefreshingProfile(false);
+      if (!isBackground) setIsRefreshingProfile(false);
     }
   };
 
@@ -188,10 +198,30 @@ export default function App() {
     if (activeChatId) {
       const currentChat = conversationsRef.current?.find(c => c.id === activeChatId) || conversations.find(c => c.id === activeChatId);
       if (currentChat) {
-        handleRefreshProfile(currentChat.id, currentChat.name);
+        handleRefreshProfile(currentChat.id, currentChat.name, true);
       }
     }
   }, [activeChatId]);
+
+  // Optionally fetch all unknown contacts in the background once on load
+  useEffect(() => {
+    const fetchUnknowns = async () => {
+      // Don't overwhelm n8n: process 1 by 1 and max 5
+      let count = 0;
+      for (const chat of conversationsRef.current || []) {
+        if (!chat.name || chat.name.startsWith('+') || chat.name === chat.id || chat.name === 'Me') {
+          if (!fetchedProfilesRef.current.has(chat.id) && count < 5) {
+            count++;
+            await handleRefreshProfile(chat.id, chat.name, true);
+            // wait a little bit
+            await new Promise(r => setTimeout(r, 500));
+          }
+        }
+      }
+    };
+    fetchUnknowns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('wa_quick_replies', JSON.stringify(quickReplies));
@@ -415,6 +445,11 @@ export default function App() {
               let defaultName = `+${phone}`;
               if (!isOutgoing && contact && contact.profile && contact.profile.name && contact.profile.name !== 'Me') {
                 defaultName = contact.profile.name;
+              }
+
+              // Fire background fetch for this phone (n8n Webhook will update it if found)
+              if (phone) {
+                handleRefreshProfile(phone, defaultName, true);
               }
 
               if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
