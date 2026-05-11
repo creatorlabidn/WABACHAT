@@ -137,6 +137,7 @@ export default function App() {
   const [qrForm, setQrForm] = useState({ title: '', message: '' });
   const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [orderHistories, setOrderHistories] = useState<Record<string, any>>({});
+  const [chatToDelete, setChatToDelete] = useState<string | null>(null);
   const quickReplyPanelRef = useRef<HTMLDivElement>(null);
   const fetchedProfilesRef = useRef<Set<string>>(new Set());
 
@@ -857,7 +858,7 @@ export default function App() {
                   if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                   setHoveredChatId(null);
                 }}
-                className={`relative p-4 border-l-4 cursor-pointer transition-colors ${
+                className={`group relative p-4 border-l-4 cursor-pointer transition-colors ${
                   isActive 
                     ? 'bg-indigo-50 border-indigo-600' 
                     : 'hover:bg-slate-50 border-transparent'
@@ -865,9 +866,21 @@ export default function App() {
               >
                 <div className="flex justify-between items-start">
                   <span className={`font-semibold truncate pr-2 ${chat.unreadCount ? 'text-slate-900 font-bold' : 'text-slate-900'}`}>{chat.name}</span>
-                  <span className={`text-xs whitespace-nowrap ${isActive ? 'text-indigo-600 font-medium' : chat.unreadCount ? 'text-indigo-600 font-bold' : 'text-slate-400'}`}>
-                    {chat.lastMessageTime}
-                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setChatToDelete(chat.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded transition-all"
+                      title="Hapus Obrolan"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    <span className={`text-xs whitespace-nowrap ${isActive ? 'text-indigo-600 font-medium' : chat.unreadCount ? 'text-indigo-600 font-bold' : 'text-slate-400'}`}>
+                      {chat.lastMessageTime}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex justify-between items-center mt-1">
                   <p className={`text-sm truncate flex-1 pr-2 ${chat.unreadCount ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
@@ -1034,6 +1047,14 @@ export default function App() {
                 </button>
                 <button className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">
                   <Video className="w-5 h-5" />
+                </button>
+                <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                <button 
+                  onClick={() => setChatToDelete(activeChat.id)}
+                  className="p-2 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors"
+                  title="Hapus Obrolan"
+                >
+                  <Trash2 className="w-5 h-5" />
                 </button>
                 <button 
                   onClick={() => setActiveChatId(null)}
@@ -1706,6 +1727,43 @@ export default function App() {
           >
             <X className="w-6 h-6" />
           </button>
+        </div>
+      )}
+
+      {/* Confirm Delete Chat Modal */}
+      {chatToDelete && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4 text-rose-500">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Hapus Obrolan?</h3>
+              <p className="text-sm text-slate-500">
+                Apakah Anda yakin ingin menghapus obrolan ini? Tindakan ini tidak dapat dibatalkan.
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 flex gap-2 justify-end">
+              <button 
+                onClick={() => setChatToDelete(null)}
+                className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-800"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={() => {
+                  setConversations(prev => prev.filter(c => c.id !== chatToDelete));
+                  if (activeChatId === chatToDelete) {
+                    setActiveChatId(null);
+                  }
+                  setChatToDelete(null);
+                }}
+                className="bg-rose-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-rose-600"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
