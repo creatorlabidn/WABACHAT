@@ -171,9 +171,12 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
-        if (orderData.name && orderData.name.trim() !== '' && orderData.name !== 'Me') {
+        
+        const webhookName = orderData.name || orderData.nama || orderData.Name || orderData.customer_name || (orderData.orders && orderData.orders[0] && (orderData.orders[0].name || orderData.orders[0].nama || orderData.orders[0].customer_name));
+        
+        if (webhookName && typeof webhookName === 'string' && webhookName.trim() !== '' && webhookName !== 'Me') {
           setConversations(prev => prev.map(c => 
-            c.id === idToRefresh ? { ...c, name: orderData.name } : c
+            c.id === idToRefresh ? { ...c, name: webhookName.trim() } : c
           ));
         }
       }
@@ -183,6 +186,18 @@ export default function App() {
       setIsRefreshingProfile(false);
     }
   };
+
+  const profileFetchedRef = useRef<Set<string>>(new Set());
+
+  // Automatically fetch profiles from n8n for every chat to ensure we get the name from the webhook
+  useEffect(() => {
+    conversations.forEach(c => {
+      if (!profileFetchedRef.current.has(c.id)) {
+        profileFetchedRef.current.add(c.id);
+        handleRefreshProfile(c.id, c.name);
+      }
+    });
+  }, [conversations]); // handleRefreshProfile and profileFetchedRef are stable
 
   useEffect(() => {
     if (activeChatId) {
