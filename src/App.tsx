@@ -171,15 +171,10 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
-        
-        // Update nama chat jika dari webhook nama tersebut tersedia dan valid
-        if (orderData.name && orderData.name !== idToRefresh && orderData.name !== `+${idToRefresh}`) {
-          setConversations(prev => prev.map(c => {
-            if (c.id === idToRefresh) {
-              return { ...c, name: orderData.name };
-            }
-            return c;
-          }));
+        if (orderData.name && orderData.name.trim() !== '' && orderData.name !== 'Me') {
+          setConversations(prev => prev.map(c => 
+            c.id === idToRefresh ? { ...c, name: orderData.name } : c
+          ));
         }
       }
     } catch (error) {
@@ -417,11 +412,9 @@ export default function App() {
               const isOutgoing = payload._outgoing === true;
               const phone = isOutgoing ? payload._to : newMsg.from;
               
-              // Jika ini pesan keluar, profile.name dari webhook biasanya adalah "Me" atau nama bisnis pengirim,
-              // bukan nama pelanggan. Jadi kita hindari menggunakan contact.profile.name untuk pesan keluar.
-              let defaultName = (contact && !isOutgoing) ? contact.profile.name : `+${phone}`;
-              if (defaultName === 'Me') {
-                defaultName = `+${phone}`;
+              let defaultName = `+${phone}`;
+              if (!isOutgoing && contact && contact.profile && contact.profile.name && contact.profile.name !== 'Me') {
+                defaultName = contact.profile.name;
               }
 
               if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
@@ -478,8 +471,16 @@ export default function App() {
                 const isInitial = isInitialFetchRef.current;
 
                 if (existingChat) {
+                  let updatedName = existingChat.name;
+                  if (!isOutgoing && contact?.profile?.name && contact.profile.name !== 'Me') {
+                    if (!updatedName || updatedName === existingChat.id || updatedName === existingChat.phone || updatedName === `+${existingChat.id}` || updatedName === 'Me') {
+                      updatedName = contact.profile.name;
+                    }
+                  }
+
                   const updatedChat = {
                     ...existingChat,
+                    name: updatedName,
                     messages: [...existingChat.messages, newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     // Pesan keluar tidak menambah unread count
