@@ -244,7 +244,9 @@ export default function App() {
   };
 
   const applyQuickReply = (qr: QuickReply) => {
-    const msg = qr.message.replace(/\{\{nama\}\}/gi, activeChat?.name || '');
+    const defaultName = activeChat?.name === activeChat?.phone ? '' : activeChat?.name;
+    const sapaan = orderHistories[activeChat?.id || '']?.orders?.[0]?.nama || orderHistories[activeChat?.id || '']?.name || defaultName || '';
+    const msg = qr.message.replace(/\{\{nama\}\}/gi, sapaan);
     setInputText(msg);
     setShowQuickReplies(false);
     setQuickReplySearch('');
@@ -1387,7 +1389,7 @@ export default function App() {
                                 <Zap className="w-3 h-3" /> {qr.title}
                               </p>
                               <p className="text-sm text-slate-600 line-clamp-2 leading-snug">
-                                {qr.message.replace(/\{\{nama\}\}/gi, activeChat?.name || '{{nama}}')}
+                                {qr.message.replace(/\{\{nama\}\}/gi, orderHistories[activeChat?.id || '']?.orders?.[0]?.nama || orderHistories[activeChat?.id || '']?.name || (activeChat?.name && activeChat.name !== activeChat.phone ? activeChat.name : '{{nama}}'))}
                               </p>
                             </button>
                           ))
@@ -1456,6 +1458,12 @@ export default function App() {
             <div>
               <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Kontak Details</h4>
               <div className="space-y-2">
+                <div className="text-sm text-slate-700 font-medium flex justify-between">
+                  <span>Nama:</span> 
+                  <span className="text-slate-500 truncate ml-2" title={orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}>
+                    {orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}
+                  </span>
+                </div>
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
                   <span>WhatsApp:</span> 
                   <span className="text-slate-500">{activeChat.phone}</span>
