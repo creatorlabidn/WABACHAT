@@ -743,8 +743,19 @@ export default function App() {
       {/* Conversations List */}
       <nav className={`${activeChatId ? 'hidden md:flex' : 'flex'} w-full md:w-80 bg-white border-r border-slate-200 flex-col shrink-0`}>
         <div className="p-4 border-b border-slate-100">
-          <h1 className="text-xl font-bold text-slate-800">Inbox</h1>
-          <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Business API Dashboard</p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-xl font-bold text-slate-800">Inbox</h1>
+              <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Business API Dashboard</p>
+            </div>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="md:hidden p-2 text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+              aria-label="Pengaturan"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
           <div className="mt-4 relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-slate-400" />
