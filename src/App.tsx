@@ -85,21 +85,6 @@ export default function App() {
   }, [conversations]);
 
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'wa_conversations' && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          setConversations(parsed);
-        } catch (error) {
-          console.error("Failed to parse wa_conversations from storage event", error);
-        }
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  useEffect(() => {
     if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
       Notification.requestPermission();
     }
@@ -196,15 +181,9 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
-        
-        let newName = orderData.name;
-        if ((!newName || newName.trim() === '') && orderData.orders && orderData.orders.length > 0) {
-          newName = orderData.orders[0].nama;
-        }
-
-        if (newName && newName.trim() !== '' && newName !== 'Me') {
+        if (orderData.name && orderData.name.trim() !== '' && orderData.name !== 'Me') {
           setConversations(prev => prev.map(c => 
-            c.id === idToRefresh ? { ...c, name: newName } : c
+            c.id === idToRefresh ? { ...c, name: orderData.name } : c
           ));
         }
       }
