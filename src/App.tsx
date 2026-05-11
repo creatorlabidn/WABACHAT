@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
-  MessageSquare, User, Settings, Phone, Video, Paperclip, 
+  MessageSquare, User, Settings, Phone, Video, Paperclip, ArrowLeft,
   Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2, RefreshCw
 } from 'lucide-react';
 
@@ -718,7 +718,7 @@ export default function App() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
       {/* Global Sidebar */}
-      <aside className="w-16 bg-slate-900 flex flex-col items-center py-6 space-y-8 text-slate-400">
+      <aside className="hidden md:flex w-16 bg-slate-900 flex-col items-center py-6 space-y-8 text-slate-400 shrink-0">
         <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
           B
         </div>
@@ -741,7 +741,7 @@ export default function App() {
       </aside>
 
       {/* Conversations List */}
-      <nav className="w-80 bg-white border-r border-slate-200 flex flex-col">
+      <nav className={`${activeChatId ? 'hidden md:flex' : 'flex'} w-full md:w-80 bg-white border-r border-slate-200 flex-col shrink-0`}>
         <div className="p-4 border-b border-slate-100">
           <h1 className="text-xl font-bold text-slate-800">Inbox</h1>
           <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Business API Dashboard</p>
@@ -907,17 +907,24 @@ export default function App() {
       </nav>
 
       {/* Chat View */}
-      <main className="flex-1 flex flex-col bg-[#F8FAFC]">
+      <main className={`${!activeChatId ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-[#F8FAFC] min-w-0`}>
         {activeChat ? (
           <>
-            <header className="h-16 bg-white border-b border-slate-200 flex items-center px-6 justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-500 font-medium">
+            <header className="h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 justify-between shrink-0">
+              <div className="flex items-center space-x-2 md:space-x-3">
+                <button 
+                  onClick={() => setActiveChatId(null)} 
+                  className="md:hidden p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg shrink-0 -ml-2"
+                  aria-label="Kembali"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="w-10 h-10 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-500 font-medium shrink-0">
                   {activeChat.name.charAt(0)}
                 </div>
-                <div>
-                  <h2 className="font-bold text-slate-900 flex items-center gap-2">
-                    {activeChat.name}
+                <div className="min-w-0">
+                  <h2 className="font-bold text-slate-900 flex items-center gap-2 truncate">
+                    <span className="truncate">{activeChat.name}</span>
                     {activeChat.labels && activeChat.labels.map(label => {
                       const color = 
                         label === 'Prospek' ? 'bg-blue-100 text-blue-700' :
@@ -984,7 +991,7 @@ export default function App() {
                 </button>
                 <button 
                   onClick={() => setActiveChatId(null)}
-                  className="p-2 ml-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                  className="hidden md:block p-2 ml-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
                   title="Tutup Obrolan (Esc)"
                 >
                   <X className="w-5 h-5" />
@@ -992,7 +999,7 @@ export default function App() {
               </div>
             </header>
 
-            <section className="flex-1 p-6 space-y-4 overflow-y-auto flex flex-col">
+            <section className="flex-1 p-4 md:p-6 space-y-4 overflow-y-auto flex flex-col">
               <div className="flex justify-center mb-2">
                 <span className="px-3 py-1 bg-slate-200 text-slate-500 text-[10px] font-bold rounded-full uppercase tracking-tighter">
                   Hari Ini
@@ -1373,7 +1380,7 @@ export default function App() {
 
       {/* Customer Details Panel */}
       {activeChat && (
-        <aside className="w-64 bg-white border-l border-slate-200 p-6 flex flex-col overflow-y-auto">
+        <aside className="hidden lg:flex w-64 bg-white border-l border-slate-200 p-6 flex-col overflow-y-auto shrink-0">
           <div className="text-center">
             <div className="w-20 h-20 bg-slate-100 rounded-full mx-auto mb-4 border-2 border-slate-200 flex items-center justify-center text-slate-400 text-2xl font-bold">
               {activeChat.name.charAt(0)}
