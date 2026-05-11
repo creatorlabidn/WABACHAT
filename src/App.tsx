@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
-  MessageSquare, User, Settings, Phone, Video, Paperclip, ArrowLeft,
+  MessageSquare, User, Settings, Paperclip, ArrowLeft,
   Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2, RefreshCw
 } from 'lucide-react';
 
@@ -199,7 +199,7 @@ export default function App() {
     if (activeChatId) {
       const currentChat = conversationsRef.current?.find(c => c.id === activeChatId) || conversations.find(c => c.id === activeChatId);
       if (currentChat) {
-        handleRefreshProfile(currentChat.id, currentChat.name, true);
+        handleRefreshProfile(currentChat.id, currentChat.name, false);
       }
     }
   }, [activeChatId]);
@@ -1042,13 +1042,6 @@ export default function App() {
                   </div>
                 )}
 
-                <button className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">
-                  <Phone className="w-5 h-5" />
-                </button>
-                <button className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">
-                  <Video className="w-5 h-5" />
-                </button>
-                <div className="w-px h-6 bg-slate-200 mx-1"></div>
                 <button 
                   onClick={() => setChatToDelete(activeChat.id)}
                   className="p-2 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors"
