@@ -171,6 +171,16 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
+        
+        // Update nama chat jika dari webhook nama tersebut tersedia dan valid
+        if (orderData.name && orderData.name !== idToRefresh && orderData.name !== `+${idToRefresh}`) {
+          setConversations(prev => prev.map(c => {
+            if (c.id === idToRefresh) {
+              return { ...c, name: orderData.name };
+            }
+            return c;
+          }));
+        }
       }
     } catch (error) {
       console.error('Failed to refresh profile:', error);
