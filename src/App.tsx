@@ -72,7 +72,14 @@ export default function App() {
       const saved = localStorage.getItem('wa_conversations');
       if (saved) {
         const parsed: Conversation[] = JSON.parse(saved);
-        return parsed.map(c => c.name === 'Me' ? { ...c, name: c.phone || c.id } : c);
+        // ── PERUBAHAN 1 ──────────────────────────────────────────────────────────
+        // Saat load dari localStorage, selalu reset nama ke nomor telepon.
+        // n8n Webhook adalah satu-satunya sumber kebenaran untuk nama kontak.
+        // Ini memastikan pindah browser tidak membawa nama yang salah/lama.
+        return parsed.map(c => ({
+          ...c,
+          name: c.phone || `+${c.id}` || c.id,
+        }));
       }
     } catch (e) {
       console.error('Failed to parse conversations from local storage', e);
@@ -139,7 +146,13 @@ export default function App() {
   const [orderHistories, setOrderHistories] = useState<Record<string, any>>({});
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
   const quickReplyPanelRef = useRef<HTMLDivElement>(null);
-  const fetchedProfilesRef = useRef<Set<string>>(new Set());
+
+  // ── PERUBAHAN 2 ──────────────────────────────────────────────────────────────
+  // fetchedProfilesRef TIDAK lagi digunakan sebagai penjaga global sesi.
+  // Setiap kali halaman dimuat, SEMUA kontak akan dicek ke n8n.
+  // Kita hanya menjaga agar satu nomor tidak difetch dua kali dalam sesi yang sama
+  // (misalnya jika pesan baru masuk untuk nomor yang sedang di-fetch).
+  const fetchingInProgressRef = useRef<Set<string>>(new Set());
 
   const handleRefreshProfile = async (targetId?: string | any, targetName?: string | any, isBackground = false) => {
     // protect against event objects
@@ -149,11 +162,9 @@ export default function App() {
     const nameToRefresh = safeTargetName;
     if (!idToRefresh) return;
     
-    // Prevent duplicated background fetches
-    if (isBackground) {
-      if (fetchedProfilesRef.current.has(idToRefresh)) return;
-      fetchedProfilesRef.current.add(idToRefresh);
-    }
+    // Cegah fetch duplikat untuk nomor yang sama dalam waktu bersamaan
+    if (fetchingInProgressRef.current.has(idToRefresh)) return;
+    fetchingInProgressRef.current.add(idToRefresh);
     
     if (!isBackground) setIsRefreshingProfile(true);
     try {
@@ -171,7 +182,6 @@ export default function App() {
       try {
         data = JSON.parse(responseText);
         if (typeof data === 'string') {
-          // Tangani jika n8n mengirim stringified JSON di dalam response body
           data = JSON.parse(data);
         }
       } catch (e) {
@@ -182,11 +192,14 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
-        
-        const retrievedName = orderData.name || orderData.orders?.[0]?.nama;
-        if (retrievedName && typeof retrievedName === 'string' && retrievedName.trim() !== '' && retrievedName !== 'Me') {
+        // ── PERUBAHAN 3 ──────────────────────────────────────────────────────────
+        // n8n adalah SATU-SATUNYA sumber nama. Nama diupdate ke state jika n8n
+        // mengembalikan nama yang valid (tidak kosong dan bukan 'Me').
+        // Tidak ada lagi pengecekan apakah nama saat ini "masih placeholder" —
+        // n8n selalu menang jika memberikan jawaban yang valid.
+        if (orderData.name && orderData.name.trim() !== '' && orderData.name !== 'Me') {
           setConversations(prev => prev.map(c => 
-            c.id === idToRefresh ? { ...c, name: retrievedName } : c
+            c.id === idToRefresh ? { ...c, name: orderData.name } : c
           ));
         }
       }
@@ -194,35 +207,38 @@ export default function App() {
       console.error('Failed to refresh profile:', error);
     } finally {
       if (!isBackground) setIsRefreshingProfile(false);
+      // Lepas kunci setelah selesai agar bisa di-refresh manual lagi nanti
+      fetchingInProgressRef.current.delete(idToRefresh);
     }
   };
 
+  // Fetch nama kontak dari n8n saat chat dibuka
   useEffect(() => {
     if (activeChatId) {
       const currentChat = conversationsRef.current?.find(c => c.id === activeChatId) || conversations.find(c => c.id === activeChatId);
       if (currentChat) {
-        handleRefreshProfile(currentChat.id, currentChat.name, false);
+        handleRefreshProfile(currentChat.id, currentChat.phone || currentChat.id, false);
       }
     }
   }, [activeChatId]);
 
-  // Optionally fetch all unknown contacts in the background once on load
+  // ── PERUBAHAN 4 ──────────────────────────────────────────────────────────────
+  // Saat halaman dimuat: fetch n8n untuk SEMUA kontak tanpa batasan jumlah.
+  // Ini memastikan nama kontak selalu fresh dari n8n, bukan dari localStorage.
+  // Proses dilakukan secara berurutan dengan jeda 300ms antar request
+  // agar tidak membanjiri n8n sekaligus.
   useEffect(() => {
-    const fetchUnknowns = async () => {
-      // Don't overwhelm n8n: process 1 by 1 and max 5
-      let count = 0;
-      for (const chat of conversationsRef.current || []) {
-        if (!chat.name || chat.name.startsWith('+') || chat.name === chat.id || chat.name === 'Me') {
-          if (!fetchedProfilesRef.current.has(chat.id) && count < 5) {
-            count++;
-            await handleRefreshProfile(chat.id, chat.name, true);
-            // wait a little bit
-            await new Promise(r => setTimeout(r, 500));
-          }
-        }
+    const fetchAllContacts = async () => {
+      const allChats = conversationsRef.current || [];
+      if (allChats.length === 0) return;
+
+      for (const chat of allChats) {
+        // Jeda kecil antar request agar n8n tidak kewalahan
+        await new Promise(r => setTimeout(r, 300));
+        await handleRefreshProfile(chat.id, chat.phone || chat.id, true);
       }
     };
-    fetchUnknowns();
+    fetchAllContacts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -246,7 +262,8 @@ export default function App() {
   };
 
   const applyQuickReply = (qr: QuickReply) => {
-    const sapaan = (activeChat?.name && activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '';
+    const defaultName = activeChat?.name === activeChat?.phone ? '' : activeChat?.name;
+    const sapaan = orderHistories[activeChat?.id || '']?.orders?.[0]?.nama || orderHistories[activeChat?.id || '']?.name || defaultName || '';
     const msg = qr.message.replace(/\{\{nama\}\}/gi, sapaan);
     setInputText(msg);
     setShowQuickReplies(false);
@@ -316,7 +333,6 @@ export default function App() {
     setConversations(prev => prev.map(c => c.id === activeChatId ? { ...c, unreadCount: 0 } : c));
   }, [activeChatId]);
 
-  // Mark all unread incoming messages as read
   const conversationsRef = useRef(conversations);
   useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
@@ -359,16 +375,11 @@ export default function App() {
   const isInitialFetchRef = useRef(true);
 
   useEffect(() => {
-    // Track processed message IDs to avoid duplicates during polling
     const processedMsgIds = new Set<string>();
 
     const fetchWebhooks = async () => {
       try {
         const phoneId = configRef.current.phoneNumberId;
-
-        // Jangan fetch jika Phone Number ID belum dikonfigurasi —
-        // tanpa filter phoneId, server akan mengembalikan SEMUA pesan
-        // dari semua nomor yang pernah masuk, bukan milik akun ini.
         if (!phoneId) return;
 
         const phoneIdParam = `&phoneId=${encodeURIComponent(phoneId)}`;
@@ -393,7 +404,6 @@ export default function App() {
           ) {
             const value = payload.entry[0].changes[0].value;
             
-            // Handle message status updates
             if (value.statuses) {
               const statusUpdates = value.statuses;
               statusUpdates.forEach((statusUpdate: any) => {
@@ -428,39 +438,37 @@ export default function App() {
               });
             }
 
-            // Handle new messages
             if (value.messages) {
-              const contacts = value.contacts as WAContact[];
               const messages = value.messages as WAMessage[];
               
               if (!messages || messages.length === 0) return;
               
               const newMsg = messages[0];
               
-              // Skip if already processed
               if (processedMsgIds.has(newMsg.id)) return;
               processedMsgIds.add(newMsg.id);
 
-              const contact = contacts ? contacts[0] : null;
-              // Untuk pesan keluar (_outgoing), gunakan _to sebagai ID chat
               const isOutgoing = payload._outgoing === true;
               const phone = isOutgoing ? payload._to : newMsg.from;
               
-              let defaultName = `+${phone}`;
-              if (!isOutgoing && contact && contact.profile && contact.profile.name && contact.profile.name !== 'Me') {
-                defaultName = contact.profile.name;
-              }
+              // ── PERUBAHAN 5 ──────────────────────────────────────────────────
+              // defaultName selalu menggunakan nomor telepon.
+              // Nama yang benar akan didapat dari n8n, bukan dari contact.profile.name WA API.
+              const defaultName = `+${phone}`;
 
-              // Fire background fetch for this phone (n8n Webhook will update it if found)
-              if (phone) {
+              // Trigger background fetch n8n untuk kontak baru yang belum ada di state
+              const existingChatCheck = conversationsRef.current.find(c => c.id === phone);
+              if (!existingChatCheck && phone) {
                 handleRefreshProfile(phone, defaultName, true);
               }
 
               if (!isOutgoing && !isInitialFetchRef.current && Notification.permission === "granted") {
                 const isCurrentlyActive = phone === activeChatIdRef.current;
                 if (!isCurrentlyActive || document.hidden) {
+                  // Untuk notifikasi, gunakan nama dari state jika sudah ada
+                  const chatName = conversationsRef.current.find(c => c.id === phone)?.name || defaultName;
                   const body = newMsg.type === 'text' ? newMsg.text?.body : newMsg.type === 'image' ? (newMsg.image?.caption || '[Gambar]') : newMsg.type === 'video' ? (newMsg.video?.caption || '[Video]') : newMsg.type === 'audio' ? (newMsg.audio?.voice ? '[Pesan Suara]' : '[Audio]') : `[${newMsg.type}]`;
-                  const notification = new Notification(`Pesan baru dari ${defaultName}`, {
+                  const notification = new Notification(`Pesan baru dari ${chatName}`, {
                     body: body,
                   });
                   notification.onclick = () => {
@@ -500,7 +508,6 @@ export default function App() {
                   return prev;
                 }
 
-                // Avoid duplicates in state
                 const existingChat = prev.find(c => c.id === phone);
                 if (existingChat && existingChat.messages.some(m => m.id === newMsg.id)) {
                   return prev;
@@ -510,23 +517,19 @@ export default function App() {
                 const isInitial = isInitialFetchRef.current;
 
                 if (existingChat) {
-                  let updatedName = existingChat.name;
-                  if (!isOutgoing && contact?.profile?.name && contact.profile.name !== 'Me') {
-                    if (!updatedName || updatedName === existingChat.id || updatedName === existingChat.phone || updatedName === `+${existingChat.id}` || updatedName === 'Me') {
-                      updatedName = contact.profile.name;
-                    }
-                  }
-
+                  // ── PERUBAHAN 6 ──────────────────────────────────────────────
+                  // Nama TIDAK diupdate dari contact.profile.name WA API.
+                  // Nama yang ada di state dibiarkan apa adanya (sudah di-set oleh n8n
+                  // atau masih nomor telepon jika n8n belum merespons).
                   const updatedChat = {
                     ...existingChat,
-                    name: updatedName,
                     messages: [...existingChat.messages, newMsg],
                     lastMessageTime: new Date(parseInt(newMsg.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    // Pesan keluar tidak menambah unread count
                     unreadCount: isOutgoing ? (existingChat.unreadCount || 0) : isCurrentlyActive ? 0 : isInitial ? (existingChat.unreadCount || 0) : (existingChat.unreadCount || 0) + 1
                   };
                   return [updatedChat, ...prev.filter(c => c.id !== phone)];
                 } else {
+                  // Kontak baru: nama diset ke nomor dulu, n8n akan update nanti
                   const newChat: Conversation = {
                     id: phone,
                     name: defaultName,
@@ -547,10 +550,7 @@ export default function App() {
       }
     };
 
-    // Initial fetch
     fetchWebhooks();
-
-    // Poll every 3 seconds
     const interval = setInterval(fetchWebhooks, 3000);
     return () => clearInterval(interval);
   }, []);
@@ -574,7 +574,6 @@ export default function App() {
     try {
       let mediaId: string | undefined;
 
-      // Handle file upload if there's an attachment
       if (attachment) {
         const formData = new FormData();
         formData.append("file", attachment);
@@ -615,7 +614,6 @@ export default function App() {
       const replyToMsg = replyingToMessage;
       setReplyingToMessage(null);
 
-      // Update UI optimistically after upload starts/finishes for the message
       const newMsg: WAMessage = {
         from: "me",
         id: `local_${Date.now()}`,
@@ -695,7 +693,6 @@ export default function App() {
       return;
     }
     
-    // Optimistic UI update
     setConversations(prev => {
       return prev.map(chat => {
         if (chat.id === activeChatId) {
@@ -829,24 +826,20 @@ export default function App() {
                 }}
                 onMouseEnter={(e) => {
                   if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-                  // Capture target before setTimeout — synthetic event becomes invalid after delay
                   const target = e.currentTarget as HTMLElement;
                   hoverTimeoutRef.current = setTimeout(() => {
                     if (chat.unreadCount && chat.unreadCount > 0) {
                       const rect = target.getBoundingClientRect();
-                      const popupWidth = 288; // w-72
+                      const popupWidth = 288;
                       const popupMaxHeight = 340;
                       const viewportHeight = window.innerHeight;
                       const viewportWidth = window.innerWidth;
 
-                      // Position to the right of the nav panel
                       let leftPos = rect.right + 8;
-                      // If popup would overflow right edge, flip to left
                       if (leftPos + popupWidth > viewportWidth - 8) {
                         leftPos = rect.left - popupWidth - 8;
                       }
 
-                      // Align top with hovered item, clamp so popup stays in viewport
                       let topPos = rect.top;
                       if (topPos + popupMaxHeight > viewportHeight - 16) {
                         topPos = Math.max(16, viewportHeight - popupMaxHeight - 16);
@@ -916,7 +909,7 @@ export default function App() {
           })}
         </div>
 
-        {/* Portal: Hover Preview Popup — rendered to document.body, always above everything */}
+        {/* Portal: Hover Preview Popup */}
         {hoveredChatId && (() => {
           const hoveredChat = conversations.find(c => c.id === hoveredChatId);
           if (!hoveredChat) return null;
@@ -928,7 +921,6 @@ export default function App() {
               style={{
                 top: hoverPos.top,
                 left: hoverPos.left,
-                // Ensure popup is always rendered above every other element
                 zIndex: 2147483647,
                 maxHeight: 'calc(100vh - 32px)',
               }}
@@ -1022,7 +1014,6 @@ export default function App() {
                   <Tag className="w-5 h-5" />
                 </button>
 
-                
                 {showLabelMenu && (
                   <div className="absolute top-12 right-0 w-48 bg-white border border-slate-200 shadow-xl rounded-xl z-50 overflow-hidden">
                     <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500">
@@ -1223,7 +1214,7 @@ export default function App() {
                       </div>
                     </div>
                     
-                    {/* Action buttons - absolute positioned beside the message */}
+                    {/* Action buttons */}
                     <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? '-left-[80px]' : '-right-[80px]'} w-[76px] opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1 px-1`}>
                       <button 
                         className="p-1.5 flex items-center justify-center bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 shadow-sm"
@@ -1256,7 +1247,6 @@ export default function App() {
                             {emoji}
                           </button>
                         ))}
-                        {/* Remove reaction option if already reacted by me */}
                         {msg.reactions?.some(r => r.fromMe) && (
                           <button 
                             className="text-lg text-slate-400 hover:text-red-500 ml-1 border-l pl-2 border-slate-200"
@@ -1348,7 +1338,6 @@ export default function App() {
                     <Zap className="w-5 h-5" />
                   </button>
 
-                  {/* Quick Reply Panel */}
                   {showQuickReplies && (
                     <div className="absolute bottom-full mb-2 left-0 w-80 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden z-50">
                       <div className="px-3 py-2.5 bg-indigo-600 flex items-center justify-between">
@@ -1390,7 +1379,7 @@ export default function App() {
                                 <Zap className="w-3 h-3" /> {qr.title}
                               </p>
                               <p className="text-sm text-slate-600 line-clamp-2 leading-snug">
-                                {qr.message.replace(/\{\{nama\}\}/gi, (activeChat?.name && activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '{{nama}}')}
+                                {qr.message.replace(/\{\{nama\}\}/gi, orderHistories[activeChat?.id || '']?.orders?.[0]?.nama || orderHistories[activeChat?.id || '']?.name || (activeChat?.name && activeChat.name !== activeChat.phone ? activeChat.name : '{{nama}}'))}
                               </p>
                             </button>
                           ))
@@ -1461,8 +1450,8 @@ export default function App() {
               <div className="space-y-2">
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
                   <span>Nama:</span> 
-                  <span className="text-slate-500 truncate ml-2" title={(activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '-'}>
-                    {(activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '-'}
+                  <span className="text-slate-500 truncate ml-2" title={orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}>
+                    {orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}
                   </span>
                 </div>
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
@@ -1628,7 +1617,6 @@ export default function App() {
             </div>
 
             <div className="flex flex-col flex-1 overflow-hidden">
-              {/* Form tambah/edit */}
               <div className="p-4 border-b border-slate-100 bg-slate-50">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
                   {editingQuickReply ? '✏️ Edit Template' : '➕ Template Baru'}
@@ -1669,7 +1657,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Daftar template */}
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                 {quickReplies.length === 0 && (
                   <div className="px-6 py-10 text-center text-slate-400 text-sm">
