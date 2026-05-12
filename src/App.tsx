@@ -182,9 +182,11 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
-        if (orderData.name && orderData.name.trim() !== '' && orderData.name !== 'Me') {
+        
+        const retrievedName = orderData.name || orderData.orders?.[0]?.nama;
+        if (retrievedName && typeof retrievedName === 'string' && retrievedName.trim() !== '' && retrievedName !== 'Me') {
           setConversations(prev => prev.map(c => 
-            c.id === idToRefresh ? { ...c, name: orderData.name } : c
+            c.id === idToRefresh ? { ...c, name: retrievedName } : c
           ));
         }
       }
@@ -244,8 +246,7 @@ export default function App() {
   };
 
   const applyQuickReply = (qr: QuickReply) => {
-    const defaultName = activeChat?.name === activeChat?.phone ? '' : activeChat?.name;
-    const sapaan = orderHistories[activeChat?.id || '']?.orders?.[0]?.nama || orderHistories[activeChat?.id || '']?.name || defaultName || '';
+    const sapaan = (activeChat?.name && activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '';
     const msg = qr.message.replace(/\{\{nama\}\}/gi, sapaan);
     setInputText(msg);
     setShowQuickReplies(false);
@@ -1389,7 +1390,7 @@ export default function App() {
                                 <Zap className="w-3 h-3" /> {qr.title}
                               </p>
                               <p className="text-sm text-slate-600 line-clamp-2 leading-snug">
-                                {qr.message.replace(/\{\{nama\}\}/gi, orderHistories[activeChat?.id || '']?.orders?.[0]?.nama || orderHistories[activeChat?.id || '']?.name || (activeChat?.name && activeChat.name !== activeChat.phone ? activeChat.name : '{{nama}}'))}
+                                {qr.message.replace(/\{\{nama\}\}/gi, (activeChat?.name && activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '{{nama}}')}
                               </p>
                             </button>
                           ))
@@ -1460,8 +1461,8 @@ export default function App() {
               <div className="space-y-2">
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
                   <span>Nama:</span> 
-                  <span className="text-slate-500 truncate ml-2" title={orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}>
-                    {orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}
+                  <span className="text-slate-500 truncate ml-2" title={(activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '-'}>
+                    {(activeChat.name !== activeChat.phone && activeChat.name !== activeChat.id) ? activeChat.name : '-'}
                   </span>
                 </div>
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
