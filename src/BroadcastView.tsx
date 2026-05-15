@@ -88,16 +88,43 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
     });
   };
 
-  const getTemplateVariablesCount = (template: Template) => {
-    let count = 0;
+  const getExpectedVariables = (template: Template) => {
+    const vars: { componentType: string, subType?: string, buttonIndex?: number, varIndex: number, textMatch: string }[] = [];
+    
     template.components.forEach(comp => {
-      if (comp.type === 'BODY') {
-        const matches = comp.text.match(/\{\{\d+\}\}/g);
-        if (matches) count += matches.length;
+      if (comp.type === 'HEADER' && comp.format === 'TEXT' && comp.text) {
+        const matches = comp.text.match(/\{\{(\d+)\}\}/g);
+        if (matches) {
+          matches.forEach(m => {
+            const num = parseInt(m.replace(/\D/g, ''));
+            vars.push({ componentType: 'header', varIndex: num, textMatch: m });
+          });
+        }
+      }
+      
+      if (comp.type === 'BODY' && comp.text) {
+        const matches = comp.text.match(/\{\{(\d+)\}\}/g);
+        if (matches) {
+          matches.forEach(m => {
+            const num = parseInt(m.replace(/\D/g, ''));
+            vars.push({ componentType: 'body', varIndex: num, textMatch: m });
+          });
+        }
+      }
+      
+      if (comp.type === 'BUTTONS' && comp.buttons) {
+        comp.buttons.forEach((btn: any, idx: number) => {
+          if (btn.type === 'URL' && btn.url && btn.url.includes('{{1}}')) {
+            vars.push({ componentType: 'button', subType: 'url', buttonIndex: idx, varIndex: 1, textMatch: 'Button URL {{1}}' });
+          }
+        });
       }
     });
-    return count;
+    
+    return vars;
   };
+
+  const expectedVars = selectedTemplate ? getExpectedVariables(selectedTemplate) : [];
 
   const sendBroadcast = async () => {
     if (!selectedTemplate) return;
@@ -113,8 +140,6 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
       setBroadcastStatus('idle');
       return;
     }
-
-    const varCount = getTemplateVariablesCount(selectedTemplate);
     
     for (const row of csvData) {
       let phoneNumber = row[phoneColumn];
@@ -127,25 +152,42 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
       phoneNumber = phoneNumber.replace(/\D/g, '');
       if (phoneNumber.startsWith('0')) phoneNumber = '62' + phoneNumber.substring(1);
       
-      // build variables components
-      const parameters: any[] = [];
-      for (let i = 1; i <= varCount; i++) {
-        const expectedVar = `{{${i}}}`;
-        const mappedHeader = variableMapping[expectedVar];
-        const val = mappedHeader && row[mappedHeader] ? row[mappedHeader] : '';
-        parameters.push({
-          type: "text",
-          text: val
-        });
-      }
+      // aggregate parameters per component
+      const componentGroups: Record<string, any> = {};
 
-      const bodyComponent = parameters.length > 0 ? [{
-        type: "body",
-        parameters
-      }] : [];
+      expectedVars.forEach(v => {
+        const expectedKey = `${v.componentType}-${v.buttonIndex !== undefined ? v.buttonIndex : ''}-${v.varIndex}`;
+        const mappedHeader = variableMapping[expectedKey];
+        const val = mappedHeader && row[mappedHeader] ? row[mappedHeader] : '-'; // default dash if empty
+
+        // setup group
+        const groupKey = v.componentType === 'button' ? `button_${v.buttonIndex}` : v.componentType;
+        if (!componentGroups[groupKey]) {
+          if (v.componentType === 'button') {
+            componentGroups[groupKey] = {
+              type: "button",
+              sub_type: v.subType,
+              index: String(v.buttonIndex),
+              parameters: []
+            };
+          } else {
+            componentGroups[groupKey] = {
+              type: v.componentType,
+              parameters: []
+            };
+          }
+        }
+
+        componentGroups[groupKey].parameters.push({
+          type: "text",
+          text: String(val)
+        });
+      });
+
+      const bodyComponent = Object.values(componentGroups);
 
       try {
-        const payload = {
+        const payload: any = {
           to: phoneNumber,
           type: "template",
           token: config.accessToken,
@@ -154,10 +196,15 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
             name: selectedTemplate.name,
             language: {
               code: selectedTemplate.language
-            },
-            components: bodyComponent
+            }
           }
         };
+
+        if (bodyComponent) {
+          payload.template.components = bodyComponent;
+        }
+
+        console.log("Sending payload:", JSON.stringify(payload));
 
         const res = await fetch(`/api/send`, {
           method: 'POST',
@@ -169,9 +216,13 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
 
         const data = await res.json();
         if (data.error) {
-          console.error("Broadcast failed for", phoneNumber, data.error);
+          console.error("Broadcast failed for", phoneNumber, JSON.stringify(data.error));
           failedCount++;
-          currentLogs.push({ phone: phoneNumber, status: 'error', error: data.error.message || JSON.stringify(data.error) });
+          let detailedError = data.error.message || JSON.stringify(data.error);
+          if (data.error.error_data && data.error.error_data.details) {
+            detailedError += " - " + data.error.error_data.details;
+          }
+          currentLogs.push({ phone: phoneNumber, status: 'error', error: detailedError });
         } else {
           successCount++;
           currentLogs.push({ phone: phoneNumber, status: 'success' });
@@ -315,20 +366,22 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
               </div>
             </div>
 
-            {getTemplateVariablesCount(selectedTemplate) > 0 ? (
+            {expectedVars.length > 0 ? (
               <div className="space-y-4 mt-6">
                 <hr className="border-slate-100" />
                 <h3 className="font-bold text-slate-800 text-sm">Variabel Dinamis</h3>
-                <p className="text-sm font-medium text-slate-500 mb-2">Petakan variabel di template (contoh: {"{{1}}"}) dengan kolom di CSV Anda:</p>
-                {Array.from({ length: getTemplateVariablesCount(selectedTemplate) }).map((_, i) => {
-                  const expectedVar = `{{${i + 1}}}`;
+                <p className="text-sm font-medium text-slate-500 mb-2">Petakan variabel di template dengan kolom di CSV Anda:</p>
+                {expectedVars.map(v => {
+                  const expectedKey = `${v.componentType}-${v.buttonIndex !== undefined ? v.buttonIndex : ''}-${v.varIndex}`;
                   return (
-                    <div key={expectedVar} className="flex items-center gap-4">
-                      <div className="px-3 py-1.5 bg-slate-100 rounded font-bold text-slate-700 w-16 text-center">{expectedVar}</div>
+                    <div key={expectedKey} className="flex items-center gap-4">
+                      <div className="px-3 py-1.5 bg-slate-100 rounded font-bold text-slate-700 w-32 text-center text-xs truncate" title={`${v.componentType.toUpperCase()} ${v.textMatch}`}>
+                        {v.componentType.toUpperCase()} {v.textMatch}
+                      </div>
                       <span className="text-slate-400">=</span>
                       <select 
-                        value={variableMapping[expectedVar] || ''} 
-                        onChange={(e) => setVariableMapping(prev => ({...prev, [expectedVar]: e.target.value}))}
+                        value={variableMapping[expectedKey] || ''} 
+                        onChange={(e) => setVariableMapping(prev => ({...prev, [expectedKey]: e.target.value}))}
                         className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="">Pilih kolom...</option>
@@ -341,7 +394,7 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
                 })}
               </div>
             ) : (
-              <p className="text-sm text-slate-500 italic mt-4">Template ini tidak memiliki variabel dalam Body.</p>
+              <p className="text-sm text-slate-500 italic mt-4">Template ini tidak memiliki variabel.</p>
             )}
           </div>
         )}
