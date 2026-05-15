@@ -22,7 +22,7 @@ async function startServer() {
   // SEND MESSAGE ENDPOINT
   app.post("/api/send", async (req, res) => {
     try {
-      const { to, message, token, phoneId, type, mediaId, filename, replyToId } = req.body;
+      const { to, message, token, phoneId, type, mediaId, filename, replyToId, template } = req.body;
       
       let data: any = {
         messaging_product: "whatsapp",
@@ -34,7 +34,10 @@ async function startServer() {
         data.context = { message_id: replyToId };
       }
 
-      if (type === "image" && mediaId) {
+      if (type === "template" && template) {
+        data.type = "template";
+        data.template = template;
+      } else if (type === "image" && mediaId) {
         data.type = "image";
         data.image = { id: mediaId, caption: message || "" };
       } else if (type === "video" && mediaId) {

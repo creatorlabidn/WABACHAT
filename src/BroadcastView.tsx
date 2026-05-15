@@ -146,9 +146,10 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
 
       try {
         const payload = {
-          messaging_product: "whatsapp",
           to: phoneNumber,
           type: "template",
+          token: config.accessToken,
+          phoneId: config.phoneNumberId,
           template: {
             name: selectedTemplate.name,
             language: {
@@ -158,10 +159,9 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
           }
         };
 
-        const res = await fetch(`https://graph.facebook.com/v19.0/${config.phoneNumberId}/messages`, {
+        const res = await fetch(`/api/send`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${config.accessToken}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)

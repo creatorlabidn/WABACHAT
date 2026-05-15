@@ -1,9 +1,9 @@
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const body = await context.request.json() as any;
-    const { to, message, token, phoneId, type, mediaId, filename, replyToId } = body;
+    const { to, message, token, phoneId, type, mediaId, filename, replyToId, template } = body;
     
-    if (!to || (!message && !mediaId) || !token || !phoneId) {
+    if (!to || (!message && !mediaId && type !== 'template') || !token || !phoneId) {
       return new Response(JSON.stringify({ error: "Missing parameters" }), { status: 400 });
     }
 
@@ -18,7 +18,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       };
     }
 
-    if (type === 'image' && mediaId) {
+    if (type === 'template' && template) {
+      payload.type = "template";
+      payload.template = template;
+    } else if (type === 'image' && mediaId) {
       payload.type = "image";
       payload.image = {
         id: mediaId,
@@ -76,6 +79,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                   ...(type === "image" && mediaId ? { image: { id: mediaId, caption: message || "" } } : {}),
                   ...(type === "video" && mediaId ? { video: { id: mediaId, caption: message || "" } } : {}),
                   ...(type === "document" && mediaId ? { document: { id: mediaId, caption: message || "", filename: filename || "document.pdf" } } : {}),
+                  ...(type === "template" && template ? { template: template } : {}),
                   ...(replyToId ? { context: { id: replyToId } } : {}),
                 }],
                 contacts: [{ profile: { name: "Me" }, wa_id: phoneId }],
