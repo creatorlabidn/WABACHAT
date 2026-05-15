@@ -10,6 +10,23 @@ interface Template {
   status: string;
 }
 
+const formatWhatsAppText = (text: string) => {
+  if (!text) return null;
+  const parts = text.split(/(\*.*?\*|_.*?_|~.*?~)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <strong key={i}>{part.slice(1, -1)}</strong>;
+    }
+    if (part.startsWith('_') && part.endsWith('_')) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    if (part.startsWith('~') && part.endsWith('~')) {
+      return <del key={i}>{part.slice(1, -1)}</del>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+};
+
 export default function BroadcastView({ config }: { config: { phoneNumberId: string, accessToken: string, wabaId?: string } }) {
   const [file, setFile] = useState<File | null>(null);
   const [csvData, setCsvData] = useState<any[]>([]);
@@ -330,13 +347,45 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
                 </select>
 
                 {selectedTemplate && (
-                  <div className="mt-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                       <h3 className="font-bold text-slate-800">{selectedTemplate.name}</h3>
-                       <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">{selectedTemplate.language}</span>
-                    </div>
-                    <div className="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border border-slate-200">
-                      {selectedTemplate.components.find(c => c.type === 'BODY')?.text || '(Tidak ada body)'}
+                  <div className="mt-6 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat p-6 rounded-xl border border-slate-200">
+                    <div className="flex flex-col gap-1 items-end max-w-md mx-auto">
+                      <div className="bg-[#d9fdd3] text-[#111b21] p-3 rounded-lg rounded-tr-none shadow-sm w-full">
+                        {/* Header */}
+                        {selectedTemplate.components.find(c => c.type === 'HEADER') && (
+                          <div className="mb-2 font-bold text-sm">
+                            {selectedTemplate.components.find(c => c.type === 'HEADER')?.format === 'TEXT' 
+                              ? selectedTemplate.components.find(c => c.type === 'HEADER')?.text 
+                              : `[${selectedTemplate.components.find(c => c.type === 'HEADER')?.format} HEADER]`}
+                          </div>
+                        )}
+                        
+                        {/* Body */}
+                        <div className="text-sm whitespace-pre-wrap leading-snug">
+                          {selectedTemplate.components.find(c => c.type === 'BODY')?.text 
+                            ? formatWhatsAppText(selectedTemplate.components.find(c => c.type === 'BODY')?.text || '') 
+                            : '(Tidak ada body)'}
+                        </div>
+                        
+                        {/* Footer */}
+                        {selectedTemplate.components.find(c => c.type === 'FOOTER') && (
+                          <div className="mt-2 text-[11px] text-slate-500">
+                            {selectedTemplate.components.find(c => c.type === 'FOOTER')?.text}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Buttons */}
+                      {selectedTemplate.components.find(c => c.type === 'BUTTONS') && (
+                        <div className="w-full flex flex-col gap-1 mt-1">
+                          {selectedTemplate.components.find(c => c.type === 'BUTTONS')?.buttons.map((btn: any, idx: number) => (
+                            <div key={idx} className="bg-white text-[#00a884] text-sm text-center font-medium p-2.5 rounded-lg shadow-sm border border-slate-100 flex items-center justify-center gap-2">
+                              {btn.type === 'URL' && <span className="text-slate-400">🔗</span>}
+                              {btn.type === 'PHONE_NUMBER' && <span className="text-slate-400">📞</span>}
+                              {btn.text}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
