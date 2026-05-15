@@ -25,6 +25,7 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
   
   const [broadcastStatus, setBroadcastStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
   const [results, setResults] = useState<{ success: number, failed: number, total: number }>({ success: 0, failed: 0, total: 0 });
+  const [broadcastLogs, setBroadcastLogs] = useState<{ phone: string, status: string, error?: string }[]>([]);
 
   const fetchTemplates = async () => {
     if (!config.wabaId || !config.accessToken) {
@@ -101,8 +102,10 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
   const sendBroadcast = async () => {
     if (!selectedTemplate) return;
     setBroadcastStatus('sending');
+    setBroadcastLogs([]);
     let successCount = 0;
     let failedCount = 0;
+    let currentLogs: { phone: string, status: string, error?: string }[] = [];
     
     // We use the selected phone column
     if (!phoneColumn) {
@@ -168,15 +171,19 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
         if (data.error) {
           console.error("Broadcast failed for", phoneNumber, data.error);
           failedCount++;
+          currentLogs.push({ phone: phoneNumber, status: 'error', error: data.error.message || JSON.stringify(data.error) });
         } else {
           successCount++;
+          currentLogs.push({ phone: phoneNumber, status: 'success' });
         }
-      } catch (err) {
+      } catch (err: any) {
          failedCount++;
+         currentLogs.push({ phone: phoneNumber, status: 'error', error: err.message || 'Unknown error' });
       }
       
       // update state gradually
       setResults({ success: successCount, failed: failedCount, total: csvData.length });
+      setBroadcastLogs([...currentLogs]);
       
       // wait a bit to avoid rate limits
       await new Promise(r => setTimeout(r, 100));
@@ -388,6 +395,31 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
                   <div className="flex items-center justify-center gap-2 text-green-600 font-bold py-2 bg-green-50 rounded-lg">
                     <CheckCircle2 className="w-5 h-5" />
                     Pengiriman Selesai
+                  </div>
+                )}
+
+                {broadcastLogs.length > 0 && (
+                  <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-bold text-slate-700 text-sm">
+                      Logs Pengiriman
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-4 space-y-2 bg-white">
+                      {broadcastLogs.map((log, idx) => (
+                        <div key={idx} className={`p-2 rounded text-sm font-medium border ${log.status === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                          <div className="flex justify-between items-start">
+                            <span>{log.phone}</span>
+                            <span className="uppercase text-[10px] tracking-wider px-2 py-0.5 rounded-full bg-white bg-opacity-50">
+                              {log.status}
+                            </span>
+                          </div>
+                          {log.error && (
+                            <div className="mt-1 text-xs text-red-500 font-normal opacity-90 font-mono break-words">
+                              {log.error}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
