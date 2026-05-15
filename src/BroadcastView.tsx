@@ -312,25 +312,34 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
               <div className="bg-red-50 text-red-600 p-4 rounded-lg text-sm">{templateError}</div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <select
+                  value={selectedTemplate?.id || ''}
+                  onChange={(e) => {
+                    const temp = templates.find(t => t.id === e.target.value);
+                    setSelectedTemplate(temp || null);
+                    setVariableMapping({});
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700"
+                >
+                  <option value="">Pilih template...</option>
                   {templates.map(t => (
-                    <div 
-                      key={t.id} 
-                      onClick={() => {
-                        setSelectedTemplate(t);
-                        setVariableMapping({});
-                      }}
-                      className={`cursor-pointer p-4 rounded-xl border-2 transition-colors ${selectedTemplate?.id === t.id ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 hover:border-indigo-300'}`}
-                    >
-                      <h3 className="font-bold text-slate-800">{t.name}</h3>
-                      <p className="text-xs text-slate-500 uppercase tracking-wider">{t.language}</p>
-                      
-                      <div className="mt-3 text-sm text-slate-600 line-clamp-3 bg-white p-2 rounded border border-slate-100">
-                        {t.components.find(c => c.type === 'BODY')?.text || '(Tidak ada body)'}
-                      </div>
-                    </div>
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.language})
+                    </option>
                   ))}
-                </div>
+                </select>
+
+                {selectedTemplate && (
+                  <div className="mt-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                       <h3 className="font-bold text-slate-800">{selectedTemplate.name}</h3>
+                       <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">{selectedTemplate.language}</span>
+                    </div>
+                    <div className="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border border-slate-200">
+                      {selectedTemplate.components.find(c => c.type === 'BODY')?.text || '(Tidak ada body)'}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -343,10 +352,6 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
               <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold">3</span>
               Atur Variabel Template
             </h2>
-            
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 whitespace-pre-wrap font-mono">
-               {selectedTemplate.components.find(c => c.type === 'BODY')?.text}
-            </div>
 
             <div className="space-y-4 mt-6">
               <h3 className="font-bold text-slate-800 text-sm">Target Tujuan</h3>
