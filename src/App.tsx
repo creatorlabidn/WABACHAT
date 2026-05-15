@@ -2,8 +2,9 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   MessageSquare, User, Settings, Paperclip, ArrowLeft,
-  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2, RefreshCw
+  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2, RefreshCw, Megaphone
 } from 'lucide-react';
+import BroadcastView from './BroadcastView';
 
 const renderHighlightedText = (text: string, highlight: string) => {
   if (!highlight.trim() || !text) return text;
@@ -100,6 +101,7 @@ export default function App() {
   
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'inbox' | 'broadcast'>('inbox');
   const [inputText, setInputText] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +114,7 @@ export default function App() {
   const [config, setConfig] = useState({
     phoneNumberId: localStorage.getItem('wa_phone_number_id') || '',
     accessToken: localStorage.getItem('wa_access_token') || '',
+    wabaId: localStorage.getItem('wa_waba_id') || '',
   });
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
@@ -779,13 +782,24 @@ export default function App() {
           B
         </div>
         <div className="flex flex-col space-y-6">
-          <div className="p-2 bg-slate-800 text-white rounded-lg cursor-pointer">
+          <div 
+            onClick={() => setActiveTab('inbox')}
+            className={`p-2 rounded-lg cursor-pointer transition-colors ${activeTab === 'inbox' ? 'bg-slate-800 text-white' : 'hover:text-white'}`}
+            title="Inbox"
+          >
             <MessageSquare className="w-6 h-6" />
           </div>
-          <div className="p-2 hover:text-white cursor-pointer transition-colors">
+          <div 
+            onClick={() => setActiveTab('broadcast')}
+            className={`p-2 rounded-lg cursor-pointer transition-colors ${activeTab === 'broadcast' ? 'bg-slate-800 text-white' : 'hover:text-white'}`}
+            title="Broadcast"
+          >
+            <Megaphone className="w-6 h-6" />
+          </div>
+          <div className="p-2 hover:text-white cursor-pointer transition-colors" title="Contacts">
             <User className="w-6 h-6" />
           </div>
-          <div onClick={() => setIsSettingsOpen(true)} className="p-2 hover:text-white cursor-pointer transition-colors">
+          <div onClick={() => setIsSettingsOpen(true)} className="p-2 hover:text-white cursor-pointer transition-colors" title="Settings">
             <Settings className="w-6 h-6" />
           </div>
         </div>
@@ -796,8 +810,12 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Conversations List */}
-      <nav className={`${activeChatId ? 'hidden md:flex' : 'flex'} w-full md:w-80 bg-white border-r border-slate-200 flex-col shrink-0`}>
+      {activeTab === 'broadcast' ? (
+        <BroadcastView config={config} />
+      ) : (
+        <>
+          {/* Conversations List */}
+          <nav className={`${activeChatId ? 'hidden md:flex' : 'flex'} w-full md:w-80 bg-white border-r border-slate-200 flex-col shrink-0`}>
         <div className="p-4 border-b border-slate-100">
           <div className="flex justify-between items-start">
             <div>
@@ -1529,6 +1547,8 @@ export default function App() {
           </div>
         </aside>
       )}
+      </>
+      )}
 
       {/* Settings Modal */}
       {isSettingsOpen && (
@@ -1605,6 +1625,16 @@ export default function App() {
                       className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
                     />
                   </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">WhatsApp Business Account ID (WABA ID)</label>
+                    <input 
+                      type="text" 
+                      value={config.wabaId}
+                      onChange={e => setConfig({...config, wabaId: e.target.value})}
+                      placeholder="Masukkan WABA ID untuk fitur Broadcast" 
+                      className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1619,6 +1649,7 @@ export default function App() {
                 onClick={() => {
                   localStorage.setItem('wa_phone_number_id', config.phoneNumberId);
                   localStorage.setItem('wa_access_token', config.accessToken);
+                  localStorage.setItem('wa_waba_id', config.wabaId);
                   setIsSettingsOpen(false);
                 }}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700"
