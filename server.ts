@@ -229,6 +229,17 @@ async function startServer() {
     }
   });
 
+  // Custom Webhook Reception (e.g. from n8n)
+  app.post("/api/custom-webhook", (req, res) => {
+    console.log("Received Custom Webhook:", JSON.stringify(req.body, null, 2));
+    
+    // You can process custom webhook data here.
+    // If you want it to appear in the UI, you would need to format it like a WhatsApp event
+    // or create a separate UI to display it.
+    
+    res.status(200).json({ success: true, message: "Custom webhook received successfully" });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
