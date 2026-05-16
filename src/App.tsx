@@ -239,19 +239,6 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
-        
-        let resolvedName = `+${idToRefresh}`;
-        if (orderData.orders && orderData.orders.length > 0 && orderData.orders[0].nama) {
-            resolvedName = orderData.orders[0].nama;
-        } else if (orderData.name && orderData.name.trim() !== '' && orderData.name !== 'Me') {
-            resolvedName = orderData.name;
-        }
-
-        if (resolvedName !== `+${idToRefresh}`) {
-          setConversations(prev => prev.map(c => 
-            c.id === idToRefresh ? { ...c, name: resolvedName } : c
-          ));
-        }
       }
     } catch (error) {
       console.error('Failed to refresh profile:', error);
@@ -1669,8 +1656,8 @@ export default function App() {
               <div className="space-y-2">
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
                   <span>Nama:</span> 
-                  <span className="text-slate-500 truncate ml-2" title={orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}>
-                    {orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}
+                  <span className="text-slate-500 truncate ml-2" title={activeChat.name}>
+                    {activeChat.name}
                   </span>
                 </div>
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
