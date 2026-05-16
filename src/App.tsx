@@ -1263,26 +1263,29 @@ export default function App() {
                           <div className={`p-2.5 rounded-lg border flex flex-col gap-1.5 ${isMe ? 'bg-indigo-900/30 border-indigo-700/50' : 'bg-slate-100 border-slate-200'}`}>
                             <div className={`flex items-center gap-1.5 ${isMe ? 'text-indigo-300' : 'text-slate-500'}`}>
                               <Megaphone className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template{msg.template.name ? `: ${msg.template.name}` : ''}</span>
                             </div>
-                            <div className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-800'}`}>
-                              {msg.template.name}
-                            </div>
-                            {msg.template.components?.map((comp: any, idx: number) => {
-                              if (!comp.parameters || comp.parameters.length === 0) return null;
-                              return (
-                                <div key={idx} className={`text-xs p-1.5 rounded bg-black/10`}>
-                                  <span className="opacity-70 text-[10px] uppercase font-bold mb-0.5 block">{comp.type} Variables:</span>
-                                  <div className="flex flex-wrap gap-1">
-                                    {comp.parameters.map((p: any, i: number) => (
-                                      <span key={i} className={`px-1.5 py-0.5 rounded-sm ${isMe ? 'bg-indigo-800/80' : 'bg-slate-200'}`}>
-                                        {p.text || p.payload || (p.image ? `Image ID: ${p.image.id}` : p.type)}
-                                      </span>
-                                    ))}
+                            {msg.template.resolved_text ? (
+                              <div className={`text-sm whitespace-pre-wrap ${isMe ? 'text-white' : 'text-slate-800'}`}>
+                                {formatWhatsAppText(msg.template.resolved_text)}
+                              </div>
+                            ) : (
+                              msg.template.components?.map((comp: any, idx: number) => {
+                                if (!comp.parameters || comp.parameters.length === 0) return null;
+                                return (
+                                  <div key={idx} className={`text-xs p-1.5 rounded bg-black/10`}>
+                                    <span className="opacity-70 text-[10px] uppercase font-bold mb-0.5 block">{comp.type} Variables:</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {comp.parameters.map((p: any, i: number) => (
+                                        <span key={i} className={`px-1.5 py-0.5 rounded-sm ${isMe ? 'bg-indigo-800/80' : 'bg-slate-200'}`}>
+                                          {p.text || p.payload || (p.image ? `Image ID: ${p.image.id}` : p.type)}
+                                        </span>
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })
+                            )}
                           </div>
                         </div>
                       )}
