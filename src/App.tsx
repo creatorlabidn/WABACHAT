@@ -239,6 +239,19 @@ export default function App() {
       const orderData = Array.isArray(data) ? data[0] : data;
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
+        
+        let webhookName;
+        if (orderData.orders && orderData.orders.length > 0 && orderData.orders[0].nama) {
+            webhookName = orderData.orders[0].nama;
+        } else if (orderData.name && orderData.name.trim() !== '') {
+            webhookName = orderData.name;
+        }
+
+        if (webhookName) {
+          setConversations(prev => prev.map(c => 
+            c.id === idToRefresh ? { ...c, name: webhookName } : c
+          ));
+        }
       }
     } catch (error) {
       console.error('Failed to refresh profile:', error);
@@ -504,10 +517,7 @@ export default function App() {
               const isOutgoing = payload._outgoing === true;
               const phone = isOutgoing ? payload._to : newMsg.from;
               
-              let defaultName = `+${phone}`;
-              if (!isOutgoing && contact && contact.profile && contact.profile.name && contact.profile.name !== 'Me') {
-                defaultName = contact.profile.name;
-              }
+              const defaultName = `+${phone}`;
 
               // Fire background fetch for this phone (n8n Webhook will update it if found)
               if (phone) {
@@ -569,11 +579,6 @@ export default function App() {
 
                 if (existingChat) {
                   let updatedName = existingChat.name;
-                  if (!isOutgoing && contact?.profile?.name && contact.profile.name !== 'Me') {
-                    if (!updatedName || updatedName === existingChat.id || updatedName === existingChat.phone || updatedName === `+${existingChat.id}` || updatedName === 'Me') {
-                      updatedName = contact.profile.name;
-                    }
-                  }
 
                   const updatedChat = {
                     ...existingChat,
