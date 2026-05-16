@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   MessageSquare, User, Settings, Paperclip, ArrowLeft,
-  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2, RefreshCw, Megaphone
+  Search, Send, CheckCircle2, CircleDashed, X, Tag, Zap, Plus, Pencil, Trash2, RefreshCw, Megaphone, Filter
 } from 'lucide-react';
 import BroadcastView from './BroadcastView';
 
@@ -126,6 +126,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [nowMillis, setNowMillis] = useState(Date.now());
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [replyingToMessage, setReplyingToMessage] = useState<WAMessage | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -868,21 +869,31 @@ export default function App() {
               <Settings className="w-5 h-5" />
             </button>
           </div>
-          <div className="mt-4 relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-slate-400" />
+          <div className="mt-4 flex gap-2 items-center">
+            <div className="relative flex-1">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-slate-400" />
+              </div>
+              <input 
+                type="text" 
+                placeholder="Cari obrolan atau pesan..." 
+                value={globalSearchQuery}
+                onChange={(e) => setGlobalSearchQuery(e.target.value)}
+                className="w-full bg-slate-100 border-none rounded-lg py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
+              />
             </div>
-            <input 
-              type="text" 
-              placeholder="Cari obrolan atau pesan..." 
-              value={globalSearchQuery}
-              onChange={(e) => setGlobalSearchQuery(e.target.value)}
-              className="w-full bg-slate-100 border-none rounded-lg py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
-            />
+            <button
+              onClick={() => setShowUnreadOnly(prev => !prev)}
+              className={`p-2 rounded-lg flex-shrink-0 transition-colors ${showUnreadOnly ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              title="Filter pesan belum dibaca"
+            >
+              <Filter className="h-4 w-4" />
+            </button>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {conversations.filter(chat => {
+            if (showUnreadOnly && !chat.unreadCount) return false;
             if (!globalSearchQuery) return true;
             const q = globalSearchQuery.toLowerCase();
             return chat.name.toLowerCase().includes(q) || chat.messages.some(m => m.text?.body?.toLowerCase().includes(q) || m.image?.caption?.toLowerCase().includes(q) || m.video?.caption?.toLowerCase().includes(q));
