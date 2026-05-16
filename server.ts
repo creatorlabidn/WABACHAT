@@ -81,6 +81,7 @@ async function startServer() {
                   ...(type === "image" && mediaId ? { image: { id: mediaId, caption: message || "" } } : {}),
                   ...(type === "video" && mediaId ? { video: { id: mediaId, caption: message || "" } } : {}),
                   ...(type === "document" && mediaId ? { document: { id: mediaId, caption: message || "", filename: filename || "document.pdf" } } : {}),
+                  ...(type === "template" && template ? { template: template } : {}),
                   ...(replyToId ? { context: { id: replyToId } } : {}),
                 }],
                 contacts: [{ profile: { name: "Me" }, wa_id: phoneId }],

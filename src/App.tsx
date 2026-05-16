@@ -19,6 +19,23 @@ const renderHighlightedText = (text: string, highlight: string) => {
   );
 };
 
+const formatWhatsAppText = (text: string) => {
+  if (!text) return null;
+  const parts = text.split(/(\*.*?\*|_.*?_|~.*?~)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <strong key={i}>{part.slice(1, -1)}</strong>;
+    }
+    if (part.startsWith('_') && part.endsWith('_')) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    if (part.startsWith('~') && part.endsWith('~')) {
+      return <del key={i}>{part.slice(1, -1)}</del>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+};
+
 interface WAContact {
   profile: { name: string };
   wa_id: string;
@@ -35,6 +52,7 @@ interface WAMessage {
   video?: { id: string; caption?: string; mime_type?: string };
   document?: { id: string; caption?: string; filename?: string; mime_type?: string };
   audio?: { id: string; mime_type?: string; voice?: boolean };
+  template?: any;
   reaction?: { message_id: string; emoji: string };
   reactions?: { emoji: string; fromMe: boolean }[];
   context?: { id: string; forwarded?: boolean };
@@ -1240,7 +1258,43 @@ export default function App() {
                           <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat audio.</div>
                         </div>
                       )}
-                      {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'document' && msg.type !== 'audio' && msg.type !== 'unsupported' && (
+                      {msg.type === 'template' && msg.template && (
+                        <div className="flex flex-col min-w-[200px]">
+                          <div className={`p-2.5 rounded-lg border flex flex-col gap-1.5 ${isMe ? 'bg-indigo-900/30 border-indigo-700/50' : 'bg-slate-100 border-slate-200'}`}>
+                            <div className={`flex items-center gap-1.5 ${isMe ? 'text-indigo-300' : 'text-slate-500'}`}>
+                              <Megaphone className="w-3.5 h-3.5" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template</span>
+                            </div>
+                            <div className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-800'}`}>
+                              {msg.template.name}
+                            </div>
+                            {msg.template.components?.map((comp: any, idx: number) => {
+                              if (!comp.parameters || comp.parameters.length === 0) return null;
+                              return (
+                                <div key={idx} className={`text-xs p-1.5 rounded bg-black/10`}>
+                                  <span className="opacity-70 text-[10px] uppercase font-bold mb-0.5 block">{comp.type} Variables:</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {comp.parameters.map((p: any, i: number) => (
+                                      <span key={i} className={`px-1.5 py-0.5 rounded-sm ${isMe ? 'bg-indigo-800/80' : 'bg-slate-200'}`}>
+                                        {p.text || p.payload || (p.image ? `Image ID: ${p.image.id}` : p.type)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {msg.type === 'template' && !msg.template && (
+                        <div className={`p-2 rounded-lg border ${isMe ? 'bg-indigo-900/30 border-indigo-700/50 text-indigo-200' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
+                          <div className="flex items-center gap-1.5 opacity-80">
+                            <Megaphone className="w-3.5 h-3.5" />
+                            <span className="text-xs italic">[Pesan Template Broadcast]</span>
+                          </div>
+                        </div>
+                      )}
+                      {msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'document' && msg.type !== 'audio' && msg.type !== 'template' && msg.type !== 'unsupported' && (
                         <p className="text-sm italic opacity-80">[Pesan tipe {msg.type} belum didukung]</p>
                       )}
                       
