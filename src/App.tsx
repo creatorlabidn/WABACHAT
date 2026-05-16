@@ -100,9 +100,8 @@ export default function App() {
   });
   
   useEffect(() => {
-    // Also stripping name on save so we don't persist n8n names to local storage
-    const toSave = conversations.map(c => ({ ...c, name: `+${c.id}` }));
-    localStorage.setItem('wa_conversations', JSON.stringify(toSave));
+    // Save conversations including resolved names from n8n
+    localStorage.setItem('wa_conversations', JSON.stringify(conversations));
   }, [conversations]);
 
   useEffect(() => {
@@ -1657,35 +1656,27 @@ export default function App() {
       {/* Customer Details Panel */}
       {activeChat && (
         <aside className="hidden lg:flex w-64 bg-white border-l border-slate-200 p-6 flex-col overflow-y-auto shrink-0">
+          {(() => {
+            // Helper: resolve display name — prioritize nama from n8n orderHistories
+            const resolveDisplayName = (chat: Conversation) => {
+              const od = orderHistories[chat.id];
+              if (od?.orders?.[0]?.nama) return od.orders[0].nama;
+              if (od?.customer_name) return od.customer_name;
+              if (od?.nama) return od.nama;
+              if (od?.name && od.name !== `+${chat.id}` && od.name !== chat.id) return od.name;
+              return chat.name;
+            };
+            const displayName = resolveDisplayName(activeChat);
+            return (
           <div className="text-center">
             <div className="w-20 h-20 bg-slate-100 rounded-full mx-auto mb-4 border-2 border-slate-200 flex items-center justify-center text-slate-400 text-2xl font-bold">
-              {(() => {
-                const orderData = orderHistories[activeChat.id];
-                let display = activeChat.name;
-                if (activeChat.name === `+${activeChat.id}` || activeChat.name === activeChat.id) {
-                    if (orderData?.orders?.[0]?.nama) display = orderData.orders[0].nama;
-                    else if (orderData?.customer_name) display = orderData.customer_name;
-                    else if (orderData?.nama) display = orderData.nama;
-                    else if (orderData?.name && orderData.name !== `+${activeChat.id}` && orderData.name !== activeChat.id) display = orderData.name;
-                }
-                return display.charAt(0).toUpperCase();
-              })()}
+              {displayName.charAt(0).toUpperCase()}
             </div>
-            <h3 className="font-bold text-slate-900">
-              {(() => {
-                const orderData = orderHistories[activeChat.id];
-                let display = activeChat.name;
-                if (activeChat.name === `+${activeChat.id}` || activeChat.name === activeChat.id) {
-                    if (orderData?.orders?.[0]?.nama) display = orderData.orders[0].nama;
-                    else if (orderData?.customer_name) display = orderData.customer_name;
-                    else if (orderData?.nama) display = orderData.nama;
-                    else if (orderData?.name && orderData.name !== `+${activeChat.id}` && orderData.name !== activeChat.id) display = orderData.name;
-                }
-                return display;
-              })()}
-            </h3>
+            <h3 className="font-bold text-slate-900">{displayName}</h3>
             <p className="text-xs text-slate-500 mt-1">Indonesia</p>
           </div>
+            );
+          })()}
 
           <div className="mt-8 space-y-6">
             <div>
@@ -1695,15 +1686,12 @@ export default function App() {
                   <span>Nama:</span> 
                   <span className="text-slate-500 truncate ml-2" title={activeChat.name}>
                     {(() => {
-                      const orderData = orderHistories[activeChat.id];
-                      let display = activeChat.name;
-                      if (activeChat.name === `+${activeChat.id}` || activeChat.name === activeChat.id) {
-                          if (orderData?.orders?.[0]?.nama) display = orderData.orders[0].nama;
-                          else if (orderData?.customer_name) display = orderData.customer_name;
-                          else if (orderData?.nama) display = orderData.nama;
-                          else if (orderData?.name && orderData.name !== `+${activeChat.id}` && orderData.name !== activeChat.id) display = orderData.name;
-                      }
-                      return display;
+                      const od = orderHistories[activeChat.id];
+                      if (od?.orders?.[0]?.nama) return od.orders[0].nama;
+                      if (od?.customer_name) return od.customer_name;
+                      if (od?.nama) return od.nama;
+                      if (od?.name && od.name !== `+${activeChat.id}` && od.name !== activeChat.id) return od.name;
+                      return activeChat.name;
                     })()}
                   </span>
                 </div>
