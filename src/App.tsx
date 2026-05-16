@@ -1302,10 +1302,7 @@ export default function App() {
                               <div className={`p-2.5 rounded-lg border flex flex-col gap-1.5 ${isMe ? 'bg-indigo-900/30 border-indigo-700/50' : 'bg-slate-100 border-slate-200'}`}>
                                 <div className={`flex items-center gap-1.5 ${isMe ? 'text-indigo-300' : 'text-slate-500'}`}>
                                   <Megaphone className="w-3.5 h-3.5" />
-                                  <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template</span>
-                                </div>
-                                <div className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-800'}`}>
-                                  {msg.template.name}
+                                  <span className="text-[10px] font-bold uppercase tracking-wider">{msg.template.name.replace(/_/g, ' ')}</span>
                                 </div>
                                 {msg.template.components?.map((comp: any, idx: number) => {
                                   if (!comp.parameters || comp.parameters.length === 0) return null;
@@ -1331,7 +1328,7 @@ export default function App() {
                           <div className={`flex flex-col min-w-[200px] max-w-[320px] ${isMe ? 'text-white' : 'text-slate-800'}`}>
                             <div className={`flex items-center gap-1.5 mb-2 ${isMe ? 'text-indigo-200' : 'text-slate-500'}`}>
                               <Megaphone className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider">{msg.template.name.replace(/_/g, ' ')}</span>
                             </div>
                             
                             {/* Header */}
