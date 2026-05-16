@@ -236,6 +236,37 @@ async function startServer() {
     // You can process custom webhook data here.
     // If you want it to appear in the UI, you would need to format it like a WhatsApp event
     // or create a separate UI to display it.
+    const { nama_template, nomor_whatsapp } = req.body;
+    if (nama_template && nomor_whatsapp) {
+      const customEntry = {
+        object: "custom_webhook",
+        entry: [{
+          changes: [{
+            value: {
+              messaging_product: "whatsapp",
+              metadata: { phone_number_id: "custom" },
+              messages: [{
+                from: "me",
+                id: "custom_" + Date.now(),
+                timestamp: Math.floor(Date.now() / 1000).toString(),
+                type: "template",
+                template: { name: nama_template }
+              }],
+              contacts: [{ profile: { name: "Me" }, wa_id: "custom" }],
+            },
+            field: "messages"
+          }]
+        }],
+        _outgoing: true,
+        _to: nomor_whatsapp,
+      };
+      webhooks.push(customEntry);
+      
+      // Notify SSE clients
+      for (const client of sseClients) {
+        client.write(`data: ${JSON.stringify({ type: 'new_message', payload: customEntry })}\n\n`);
+      }
+    }
     
     res.status(200).json({ success: true, message: "Custom webhook received successfully" });
   });

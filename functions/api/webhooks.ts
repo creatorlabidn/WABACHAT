@@ -32,6 +32,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     if (phoneId) {
       const filtered = all.filter((payload: any) => {
         try {
+          const isCustom = payload?.object === "custom_webhook";
+          if (isCustom) return true;
           // Untuk pesan masuk, cek metadata.phone_number_id
           // Untuk pesan keluar, cek _to (nomor tujuan) atau metadata.phone_number_id
           const metadata = payload?.entry?.[0]?.changes?.[0]?.value?.metadata;
