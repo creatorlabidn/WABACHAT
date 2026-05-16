@@ -1709,7 +1709,7 @@ export default function App() {
 
             <div className="mt-auto pt-4">
               <button 
-                onClick={handleRefreshProfile}
+                onClick={() => handleRefreshProfile(activeChat.id, activeChat.name)}
                 disabled={isRefreshingProfile}
                 className="w-full flex items-center justify-center gap-2 border border-slate-200 text-slate-600 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
