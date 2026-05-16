@@ -91,8 +91,7 @@ export default function App() {
       const saved = localStorage.getItem('wa_conversations');
       if (saved) {
         const parsed: Conversation[] = JSON.parse(saved);
-        // Stripping name on load so it always uses n8n data
-        return parsed.map(c => ({ ...c, name: `+${c.id}` }));
+        return parsed;
       }
     } catch (e) {
       console.error('Failed to parse conversations from local storage', e);
@@ -237,17 +236,28 @@ export default function App() {
       }
 
       const orderData = Array.isArray(data) ? data[0] : data;
+      console.log('Webhook Response parsed:', data);
+      console.log('Derived orderData:', orderData);
+      
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
         
         let webhookName;
-        if (orderData.orders && orderData.orders.length > 0 && orderData.orders[0].nama) {
+        // Check for 'nama' inside the first order
+        if (orderData.orders && Array.isArray(orderData.orders) && orderData.orders.length > 0 && orderData.orders[0].nama) {
             webhookName = orderData.orders[0].nama;
-        } else if (orderData.name && orderData.name.trim() !== '') {
+        // Check for 'name' directly on the payload
+        } else if (orderData.name && orderData.name !== `+${idToRefresh}` && orderData.name !== idToRefresh) {
             webhookName = orderData.name;
+        // Check if there is another field like 'customer_name'
+        } else if (orderData.customer_name) {
+            webhookName = orderData.customer_name;
+        // Check if the order data has 'nama' directly
+        } else if (orderData.nama) {
+            webhookName = orderData.nama;
         }
 
-        if (webhookName) {
+        if (webhookName && typeof webhookName === 'string' && webhookName.trim() !== '') {
           setConversations(prev => prev.map(c => 
             c.id === idToRefresh ? { ...c, name: webhookName } : c
           ));
@@ -1649,10 +1659,32 @@ export default function App() {
         <aside className="hidden lg:flex w-64 bg-white border-l border-slate-200 p-6 flex-col overflow-y-auto shrink-0">
           <div className="text-center">
             <div className="w-20 h-20 bg-slate-100 rounded-full mx-auto mb-4 border-2 border-slate-200 flex items-center justify-center text-slate-400 text-2xl font-bold">
-              {activeChat.name.charAt(0)}
+              {(() => {
+                const orderData = orderHistories[activeChat.id];
+                let display = activeChat.name;
+                if (activeChat.name === `+${activeChat.id}` || activeChat.name === activeChat.id) {
+                    if (orderData?.orders?.[0]?.nama) display = orderData.orders[0].nama;
+                    else if (orderData?.customer_name) display = orderData.customer_name;
+                    else if (orderData?.nama) display = orderData.nama;
+                    else if (orderData?.name && orderData.name !== `+${activeChat.id}` && orderData.name !== activeChat.id) display = orderData.name;
+                }
+                return display.charAt(0).toUpperCase();
+              })()}
             </div>
-            <h3 className="font-bold text-slate-900">{activeChat.name}</h3>
-            <p className="text-xs text-slate-500 mt-1">Jakarta, Indonesia</p>
+            <h3 className="font-bold text-slate-900">
+              {(() => {
+                const orderData = orderHistories[activeChat.id];
+                let display = activeChat.name;
+                if (activeChat.name === `+${activeChat.id}` || activeChat.name === activeChat.id) {
+                    if (orderData?.orders?.[0]?.nama) display = orderData.orders[0].nama;
+                    else if (orderData?.customer_name) display = orderData.customer_name;
+                    else if (orderData?.nama) display = orderData.nama;
+                    else if (orderData?.name && orderData.name !== `+${activeChat.id}` && orderData.name !== activeChat.id) display = orderData.name;
+                }
+                return display;
+              })()}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">Indonesia</p>
           </div>
 
           <div className="mt-8 space-y-6">
@@ -1662,7 +1694,17 @@ export default function App() {
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
                   <span>Nama:</span> 
                   <span className="text-slate-500 truncate ml-2" title={activeChat.name}>
-                    {activeChat.name}
+                    {(() => {
+                      const orderData = orderHistories[activeChat.id];
+                      let display = activeChat.name;
+                      if (activeChat.name === `+${activeChat.id}` || activeChat.name === activeChat.id) {
+                          if (orderData?.orders?.[0]?.nama) display = orderData.orders[0].nama;
+                          else if (orderData?.customer_name) display = orderData.customer_name;
+                          else if (orderData?.nama) display = orderData.nama;
+                          else if (orderData?.name && orderData.name !== `+${activeChat.id}` && orderData.name !== activeChat.id) display = orderData.name;
+                      }
+                      return display;
+                    })()}
                   </span>
                 </div>
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
