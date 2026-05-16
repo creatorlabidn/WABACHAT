@@ -91,7 +91,8 @@ export default function App() {
       const saved = localStorage.getItem('wa_conversations');
       if (saved) {
         const parsed: Conversation[] = JSON.parse(saved);
-        return parsed;
+        // Stripping name on load so it always uses n8n data
+        return parsed.map(c => ({ ...c, name: `+${c.id}` }));
       }
     } catch (e) {
       console.error('Failed to parse conversations from local storage', e);
@@ -100,8 +101,9 @@ export default function App() {
   });
   
   useEffect(() => {
-    // Save conversations including resolved names from n8n
-    localStorage.setItem('wa_conversations', JSON.stringify(conversations));
+    // Also stripping name on save so we don't persist n8n names to local storage
+    const toSave = conversations.map(c => ({ ...c, name: `+${c.id}` }));
+    localStorage.setItem('wa_conversations', JSON.stringify(toSave));
   }, [conversations]);
 
   useEffect(() => {
@@ -204,61 +206,38 @@ export default function App() {
         phone: idToRefresh,
         name: nameToRefresh
       };
-      
-      let response;
-      try {
-        response = await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook-test/f157c575-2739-4573-86ce-624d784ee088', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } catch (fetchErr) {
-        console.error('Failed to execute fetch:', fetchErr);
-        fetchedProfilesRef.current.delete(idToRefresh); // remove so it can be retried later
-        return;
-      }
-      
+      const response = await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook/f157c575-2739-4573-86ce-624d784ee088', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       const responseText = await response.text();
       let data;
       try {
-        if (!responseText || !responseText.trim()) {
-          return;
-        }
         data = JSON.parse(responseText);
         if (typeof data === 'string') {
           // Tangani jika n8n mengirim stringified JSON di dalam response body
           data = JSON.parse(data);
         }
       } catch (e) {
-        console.error('Failed to parse webhook response:', e, responseText);
+        console.error('Failed to parse webhook response:', e);
         return;
       }
 
       const orderData = Array.isArray(data) ? data[0] : data;
-      console.log('Webhook Response parsed:', data);
-      console.log('Derived orderData:', orderData);
-      
       if (orderData) {
         setOrderHistories(prev => ({ ...prev, [idToRefresh]: orderData }));
         
-        let webhookName;
-        // Check for 'nama' inside the first order
-        if (orderData.orders && Array.isArray(orderData.orders) && orderData.orders.length > 0 && orderData.orders[0].nama) {
-            webhookName = orderData.orders[0].nama;
-        // Check for 'name' directly on the payload
-        } else if (orderData.name && orderData.name !== `+${idToRefresh}` && orderData.name !== idToRefresh) {
-            webhookName = orderData.name;
-        // Check if there is another field like 'customer_name'
-        } else if (orderData.customer_name) {
-            webhookName = orderData.customer_name;
-        // Check if the order data has 'nama' directly
-        } else if (orderData.nama) {
-            webhookName = orderData.nama;
+        let resolvedName = `+${idToRefresh}`;
+        if (orderData.orders && orderData.orders.length > 0 && orderData.orders[0].nama) {
+            resolvedName = orderData.orders[0].nama;
+        } else if (orderData.name && orderData.name.trim() !== '' && orderData.name !== 'Me') {
+            resolvedName = orderData.name;
         }
 
-        if (webhookName && typeof webhookName === 'string' && webhookName.trim() !== '') {
+        if (resolvedName !== `+${idToRefresh}`) {
           setConversations(prev => prev.map(c => 
-            c.id === idToRefresh ? { ...c, name: webhookName } : c
+            c.id === idToRefresh ? { ...c, name: resolvedName } : c
           ));
         }
       }
@@ -526,7 +505,10 @@ export default function App() {
               const isOutgoing = payload._outgoing === true;
               const phone = isOutgoing ? payload._to : newMsg.from;
               
-              const defaultName = `+${phone}`;
+              let defaultName = `+${phone}`;
+              if (!isOutgoing && contact && contact.profile && contact.profile.name && contact.profile.name !== 'Me') {
+                defaultName = contact.profile.name;
+              }
 
               // Fire background fetch for this phone (n8n Webhook will update it if found)
               if (phone) {
@@ -588,6 +570,11 @@ export default function App() {
 
                 if (existingChat) {
                   let updatedName = existingChat.name;
+                  if (!isOutgoing && contact?.profile?.name && contact.profile.name !== 'Me') {
+                    if (!updatedName || updatedName === existingChat.id || updatedName === existingChat.phone || updatedName === `+${existingChat.id}` || updatedName === 'Me') {
+                      updatedName = contact.profile.name;
+                    }
+                  }
 
                   const updatedChat = {
                     ...existingChat,
@@ -1656,27 +1643,13 @@ export default function App() {
       {/* Customer Details Panel */}
       {activeChat && (
         <aside className="hidden lg:flex w-64 bg-white border-l border-slate-200 p-6 flex-col overflow-y-auto shrink-0">
-          {(() => {
-            // Helper: resolve display name — prioritize nama from n8n orderHistories
-            const resolveDisplayName = (chat: Conversation) => {
-              const od = orderHistories[chat.id];
-              if (od?.orders?.[0]?.nama) return od.orders[0].nama;
-              if (od?.customer_name) return od.customer_name;
-              if (od?.nama) return od.nama;
-              if (od?.name && od.name !== `+${chat.id}` && od.name !== chat.id) return od.name;
-              return chat.name;
-            };
-            const displayName = resolveDisplayName(activeChat);
-            return (
           <div className="text-center">
             <div className="w-20 h-20 bg-slate-100 rounded-full mx-auto mb-4 border-2 border-slate-200 flex items-center justify-center text-slate-400 text-2xl font-bold">
-              {displayName.charAt(0).toUpperCase()}
+              {activeChat.name.charAt(0)}
             </div>
-            <h3 className="font-bold text-slate-900">{displayName}</h3>
-            <p className="text-xs text-slate-500 mt-1">Indonesia</p>
+            <h3 className="font-bold text-slate-900">{activeChat.name}</h3>
+            <p className="text-xs text-slate-500 mt-1">Jakarta, Indonesia</p>
           </div>
-            );
-          })()}
 
           <div className="mt-8 space-y-6">
             <div>
@@ -1684,15 +1657,8 @@ export default function App() {
               <div className="space-y-2">
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
                   <span>Nama:</span> 
-                  <span className="text-slate-500 truncate ml-2" title={activeChat.name}>
-                    {(() => {
-                      const od = orderHistories[activeChat.id];
-                      if (od?.orders?.[0]?.nama) return od.orders[0].nama;
-                      if (od?.customer_name) return od.customer_name;
-                      if (od?.nama) return od.nama;
-                      if (od?.name && od.name !== `+${activeChat.id}` && od.name !== activeChat.id) return od.name;
-                      return activeChat.name;
-                    })()}
+                  <span className="text-slate-500 truncate ml-2" title={orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}>
+                    {orderHistories[activeChat.id]?.orders?.[0]?.nama || orderHistories[activeChat.id]?.name || '-'}
                   </span>
                 </div>
                 <div className="text-sm text-slate-700 font-medium flex justify-between">
@@ -1731,7 +1697,7 @@ export default function App() {
 
             <div className="mt-auto pt-4">
               <button 
-                onClick={() => handleRefreshProfile(activeChat.id, activeChat.name)}
+                onClick={handleRefreshProfile}
                 disabled={isRefreshingProfile}
                 className="w-full flex items-center justify-center gap-2 border border-slate-200 text-slate-600 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
