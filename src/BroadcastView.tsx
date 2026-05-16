@@ -203,28 +203,12 @@ export default function BroadcastView({ config }: { config: { phoneNumberId: str
 
       const bodyComponent = Object.values(componentGroups);
 
-      let resolvedText = '';
-      const bodyCompDef = selectedTemplate.components.find((c: any) => c.type === 'BODY');
-      if (bodyCompDef && bodyCompDef.text) {
-        resolvedText = bodyCompDef.text;
-        expectedVars.forEach(v => {
-          if (v.componentType === 'body') {
-            const expectedKey = `${v.componentType}-${v.buttonIndex !== undefined ? v.buttonIndex : ''}-${v.varIndex}`;
-            const mappedHeader = variableMapping[expectedKey];
-            const val = mappedHeader && row[mappedHeader] ? row[mappedHeader] : '-';
-            // Use global replace if there are multiple occurrences of the same variable match, though usually it's unique
-            resolvedText = resolvedText.split(v.textMatch).join(String(val));
-          }
-        });
-      }
-
       try {
         const payload: any = {
           to: phoneNumber,
           type: "template",
           token: config.accessToken,
           phoneId: config.phoneNumberId,
-          message: resolvedText, // <--- Add this!
           template: {
             name: selectedTemplate.name,
             language: {

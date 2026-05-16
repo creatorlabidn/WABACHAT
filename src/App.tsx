@@ -162,8 +162,28 @@ export default function App() {
   const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [orderHistories, setOrderHistories] = useState<Record<string, any>>({});
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<any[]>([]);
   const quickReplyPanelRef = useRef<HTMLDivElement>(null);
   const fetchedProfilesRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (config.wabaId && config.accessToken) {
+      const fetchTemplates = async () => {
+        try {
+          const res = await fetch(`https://graph.facebook.com/v19.0/${config.wabaId}/message_templates?limit=100`, {
+            headers: { 'Authorization': `Bearer ${config.accessToken}` }
+          });
+          const data = await res.json();
+          if (data && data.data) {
+            setTemplates(data.data);
+          }
+        } catch (err) {
+          console.error("Failed to fetch templates in App.tsx", err);
+        }
+      };
+      fetchTemplates();
+    }
+  }, [config.wabaId, config.accessToken]);
 
   const handleRefreshProfile = async (targetId?: string | any, targetName?: string | any, isBackground = false) => {
     // protect against event objects
@@ -1258,37 +1278,113 @@ export default function App() {
                           <div className="hidden text-sm italic opacity-80 p-2 bg-slate-100 rounded-lg text-slate-500 mt-2">Gagal memuat audio.</div>
                         </div>
                       )}
-                      {msg.type === 'template' && msg.template && (
-                        <div className="flex flex-col min-w-[200px]">
-                          <div className={`p-2.5 rounded-lg border flex flex-col gap-1.5 ${isMe ? 'bg-indigo-900/30 border-indigo-700/50' : 'bg-slate-100 border-slate-200'}`}>
-                            <div className={`flex items-center gap-1.5 ${isMe ? 'text-indigo-300' : 'text-slate-500'}`}>
-                              <Megaphone className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template{msg.template.name ? `: ${msg.template.name}` : ''}</span>
-                            </div>
-                            {msg.template.resolved_text ? (
-                              <div className={`text-sm whitespace-pre-wrap ${isMe ? 'text-white' : 'text-slate-800'}`}>
-                                {formatWhatsAppText(msg.template.resolved_text)}
-                              </div>
-                            ) : (
-                              msg.template.components?.map((comp: any, idx: number) => {
-                                if (!comp.parameters || comp.parameters.length === 0) return null;
-                                return (
-                                  <div key={idx} className={`text-xs p-1.5 rounded bg-black/10`}>
-                                    <span className="opacity-70 text-[10px] uppercase font-bold mb-0.5 block">{comp.type} Variables:</span>
-                                    <div className="flex flex-wrap gap-1">
-                                      {comp.parameters.map((p: any, i: number) => (
-                                        <span key={i} className={`px-1.5 py-0.5 rounded-sm ${isMe ? 'bg-indigo-800/80' : 'bg-slate-200'}`}>
-                                          {p.text || p.payload || (p.image ? `Image ID: ${p.image.id}` : p.type)}
-                                        </span>
-                                      ))}
+                      {msg.type === 'template' && msg.template && (() => {
+                        const templateDef = templates.find(t => t.name === msg.template.name);
+                        
+                        // Function to substitute variables in text
+                        const substituteVars = (text: string, compType: string) => {
+                          if (!text) return text;
+                          let result = text;
+                          const compData = msg.template.components?.find((c: any) => c.type === compType);
+                          if (compData && compData.parameters) {
+                            compData.parameters.forEach((p: any, idx: number) => {
+                              const val = p.text || p.payload || (p.image ? '[Gambar]' : p.type);
+                              result = result.replace(`{{${idx + 1}}}`, val);
+                            });
+                          }
+                          return result;
+                        };
+
+                        if (!templateDef) {
+                          // Fallback view if template not found or not loaded
+                          return (
+                            <div className="flex flex-col min-w-[200px]">
+                              <div className={`p-2.5 rounded-lg border flex flex-col gap-1.5 ${isMe ? 'bg-indigo-900/30 border-indigo-700/50' : 'bg-slate-100 border-slate-200'}`}>
+                                <div className={`flex items-center gap-1.5 ${isMe ? 'text-indigo-300' : 'text-slate-500'}`}>
+                                  <Megaphone className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template</span>
+                                </div>
+                                <div className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-800'}`}>
+                                  {msg.template.name}
+                                </div>
+                                {msg.template.components?.map((comp: any, idx: number) => {
+                                  if (!comp.parameters || comp.parameters.length === 0) return null;
+                                  return (
+                                    <div key={idx} className={`text-xs p-1.5 rounded bg-black/10`}>
+                                      <span className="opacity-70 text-[10px] uppercase font-bold mb-0.5 block">{comp.type} Variables:</span>
+                                      <div className="flex flex-wrap gap-1">
+                                        {comp.parameters.map((p: any, i: number) => (
+                                          <span key={i} className={`px-1.5 py-0.5 rounded-sm ${isMe ? 'bg-indigo-800/80' : 'bg-slate-200'}`}>
+                                            {p.text || p.payload || (p.image ? `Image ID: ${p.image.id}` : p.type)}
+                                          </span>
+                                        ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              })
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className={`flex flex-col min-w-[200px] max-w-[320px] ${isMe ? 'text-white' : 'text-slate-800'}`}>
+                            <div className={`flex items-center gap-1.5 mb-2 ${isMe ? 'text-indigo-200' : 'text-slate-500'}`}>
+                              <Megaphone className="w-3.5 h-3.5" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Broadcast Template</span>
+                            </div>
+                            
+                            {/* Header */}
+                            {templateDef.components.find((c:any) => c.type === 'HEADER') && (
+                              <div className="mb-2 font-bold text-sm">
+                                {templateDef.components.find((c:any) => c.type === 'HEADER')?.format === 'TEXT' 
+                                  ? formatWhatsAppText(substituteVars(templateDef.components.find((c:any) => c.type === 'HEADER')?.text || '', 'HEADER'))
+                                  : `[${templateDef.components.find((c:any) => c.type === 'HEADER')?.format} HEADER]`}
+                              </div>
+                            )}
+                            
+                            {/* Body */}
+                            <div className="text-sm whitespace-pre-wrap leading-snug">
+                              {templateDef.components.find((c:any) => c.type === 'BODY')?.text 
+                                ? formatWhatsAppText(substituteVars(templateDef.components.find((c:any) => c.type === 'BODY')?.text || '', 'BODY'))
+                                : '(Tidak ada body)'}
+                            </div>
+                            
+                            {/* Footer */}
+                            {templateDef.components.find((c:any) => c.type === 'FOOTER') && (
+                              <div className="mt-2 text-[11px] opacity-70">
+                                {templateDef.components.find((c:any) => c.type === 'FOOTER')?.text}
+                              </div>
+                            )}
+
+                            {/* Buttons */}
+                            {templateDef.components.find((c:any) => c.type === 'BUTTONS') && (
+                              <div className="w-full flex flex-col gap-1 mt-3">
+                                {templateDef.components.find((c:any) => c.type === 'BUTTONS')?.buttons.map((btn: any, idx: number) => {
+                                  let btnText = btn.text;
+                                  
+                                  // Button vars
+                                  const compData = msg.template.components?.find((c: any) => c.type === 'button' && c.sub_type === btn.type && parseInt(c.index) === idx);
+                                  if (compData && compData.parameters) {
+                                    compData.parameters.forEach((p: any, i: number) => {
+                                      btnText = btnText.replace(`{{${i + 1}}}`, p.text || p.payload);
+                                    });
+                                  }
+
+                                  return (
+                                    <div key={idx} className={`text-sm text-center font-medium p-2 rounded-lg border flex items-center justify-center gap-2 ${isMe ? 'border-indigo-400 bg-indigo-500/20 text-indigo-100' : 'border-slate-200 bg-white text-slate-600 shadow-sm'}`}>
+                                      {btn.type === 'URL' && <span>🔗</span>}
+                                      {btn.type === 'PHONE_NUMBER' && <span>📞</span>}
+                                      {btn.type === 'QUICK_REPLY' && <span>↩️</span>}
+                                      {btnText}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             )}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                       {msg.type === 'template' && !msg.template && (
                         <div className={`p-2 rounded-lg border ${isMe ? 'bg-indigo-900/30 border-indigo-700/50 text-indigo-200' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                           <div className="flex items-center gap-1.5 opacity-80">
