@@ -206,21 +206,33 @@ export default function App() {
         phone: idToRefresh,
         name: nameToRefresh
       };
-      const response = await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook-test/f157c575-2739-4573-86ce-624d784ee088', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      
+      let response;
+      try {
+        response = await fetch('https://n8n-wexrffsqeapb.sate.sumopod.my.id/webhook/f157c575-2739-4573-86ce-624d784ee088', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (fetchErr) {
+        console.error('Failed to execute fetch:', fetchErr);
+        fetchedProfilesRef.current.delete(idToRefresh); // remove so it can be retried later
+        return;
+      }
+      
       const responseText = await response.text();
       let data;
       try {
+        if (!responseText || !responseText.trim()) {
+          return;
+        }
         data = JSON.parse(responseText);
         if (typeof data === 'string') {
           // Tangani jika n8n mengirim stringified JSON di dalam response body
           data = JSON.parse(data);
         }
       } catch (e) {
-        console.error('Failed to parse webhook response:', e);
+        console.error('Failed to parse webhook response:', e, responseText);
         return;
       }
 
